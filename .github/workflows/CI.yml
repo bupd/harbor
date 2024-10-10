@@ -334,7 +334,6 @@ jobs:
         run: |
           cd src/github.com/goharbor/harbor
           git diff --exit-code
-        # continue-on-error: true  # continue workflow
       - name: Fail if format changes are detected
         if: ${{ failure() }}
         run: |
