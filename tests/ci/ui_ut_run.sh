@@ -17,7 +17,6 @@ if [[ -n $(git status --porcelain) ]]; then
 fi
 
 # Lint and run tests
-# check code lint first then run ut test
 npm run lint
 npm run lint:style
 npm run test && cd -
