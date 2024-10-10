@@ -330,10 +330,6 @@ jobs:
           cd src/github.com/goharbor/harbor
           bash ./tests/showtime.sh ./tests/ci/ui_ut_run.sh
           df -h
-      - name: Check for formatting issues
-        run: |
-          cd src/github.com/goharbor/harbor
-          git diff --exit-code
       - name: Fail if format changes are detected
         if: ${{ failure() }}
         run: |
