@@ -24,7 +24,9 @@ export interface CustomStyle {
         name: string;
         logo: string;
         introduction: string;
-    };
+    },
+    showSubscriptionPortalOption: boolean;
+    showSubscriptionCheckoutOption: boolean;
 }
 
 export const THEME_ARRAY: ThemeInterface[] = [

@@ -28,6 +28,7 @@ import { PasswordSettingComponent } from '../password-setting/password-setting.c
 import { NavigatorComponent } from '../../shared/components/navigator/navigator.component';
 import { SessionService } from '../../shared/services/session.service';
 import { AboutDialogComponent } from '../../shared/components/about-dialog/about-dialog.component';
+import { ChargebeeDialogComponent } from '../../shared/components/chargebee-dialog/chargebee-dialog.component';
 import { SearchTriggerService } from '../../shared/components/global-search/search-trigger.service';
 import {
     CommonRoutes,
@@ -37,6 +38,8 @@ import { THEME_ARRAY, ThemeInterface } from '../../services/theme';
 import { clone } from '../../shared/units/utils';
 import { ThemeService } from '../../services/theme.service';
 import { AccountSettingsModalComponent } from '../account-settings/account-settings-modal.component';
+import { SkinableConfig } from '../../services/skinable-config.service';
+import { CustomStyle } from '../../services/theme';
 import {
     EventService,
     HarborEvent,
@@ -62,6 +65,9 @@ export class HarborShellComponent implements OnInit, OnDestroy {
     @ViewChild(AboutDialogComponent)
     aboutDialog: AboutDialogComponent;
 
+    @ViewChild(ChargebeeDialogComponent)
+    chargebeeDialog: ChargebeeDialogComponent;
+
     // To indicator whwther or not the search results page is displayed
     // We need to use this property to do some overriding work
     isSearchResultsOpened: boolean = false;
@@ -72,6 +78,7 @@ export class HarborShellComponent implements OnInit, OnDestroy {
     styleMode = this.themeArray[0].showStyle;
     @ViewChild('scrollDiv') scrollDiv: ElementRef;
     scrollToPositionSub: Subscription;
+    deploymentConfig: CustomStyle;
     constructor(
         private route: ActivatedRoute,
         private router: Router,
@@ -80,7 +87,8 @@ export class HarborShellComponent implements OnInit, OnDestroy {
         private appConfigService: AppConfigService,
         public theme: ThemeService,
         private event: EventService,
-        private cd: ChangeDetectorRef
+        private cd: ChangeDetectorRef,
+        private skinableConfig: SkinableConfig,
     ) {}
 
     ngOnInit() {
@@ -112,6 +120,7 @@ export class HarborShellComponent implements OnInit, OnDestroy {
         if (localStorage) {
             this.styleMode = localStorage.getItem(HAS_STYLE_MODE);
         }
+        this.deploymentConfig = this.skinableConfig.getSkinConfig();
     }
     isDBAuth(): boolean {
         if (this.appConfigService?.configurations?.auth_mode) {
@@ -170,6 +179,16 @@ export class HarborShellComponent implements OnInit, OnDestroy {
             this.session.getCurrentUser().has_admin_role
         );
     }
+
+    // Open about dialog
+    openChargebeeDialog(): void {
+        this.chargebeeDialog.open(this.deploymentConfig.showSubscriptionCheckoutOption);
+    }
+
+    showSubscriptionPortalOption(): boolean {
+        return this.deploymentConfig && this.deploymentConfig.showSubscriptionPortalOption;
+    }
+
     // Open modal dialog
     openModal(event: ModalEvent): void {
         switch (event.modalName) {

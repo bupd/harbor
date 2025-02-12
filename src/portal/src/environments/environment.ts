@@ -19,4 +19,8 @@
 export const environment = {
     production: false,
     buildTimestamp: 0,
+    chargebeeUrl: "container-registry-test",
+    supabaseProjectUrl: "https://zuffjtvdneaetyuhuzdp.supabase.co",
+    supabasePublishableKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlhdCI6MTYyMDMxMTEyMCwiZXhwIjoxOTM1ODg3MTIwfQ.fqZ84TQWlRPlnYH7eS7MDQLLqcB6786Di-9MNO-NRXA",
+    settingJson: "setting-c8n.json"
 };
