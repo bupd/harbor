@@ -76,30 +76,32 @@ function check_golang {
 }
 
 function check_docker {
-	if ! docker --version &> /dev/null
-	then
-		error "Need to install docker(20.10.10+) first and run this script again."
-		exit 1
-	fi
+  # Check if docker or podman is installed and check its version
+  if command -v docker &> /dev/null; then
+      version_output=$(docker --version)
+  elif command -v podman &> /dev/null; then
+      version_output=$(podman --version)
+  else
+      error "Neither docker nor podman is installed."
+      exit 1
+  fi
 
-	# docker has been installed and check its version
-	if [[ $(docker --version) =~ (([0-9]+)\.([0-9]+)([\.0-9]*)) ]]
-	then
-		docker_version=${BASH_REMATCH[1]}
-		docker_version_part1=${BASH_REMATCH[2]}
-		docker_version_part2=${BASH_REMATCH[3]}
+  # Extract version number from the version output
+  if [[ "$version_output" =~ (([0-9]+)\.([0-9]+)([\.0-9]*)) ]]; then
+      version=${BASH_REMATCH[1]}
+      version_part1=${BASH_REMATCH[2]}
+      version_part2=${BASH_REMATCH[3]}
 
-		note "docker version: $docker_version"
-		# the version of docker does not meet the requirement
-		if [ "$docker_version_part1" -lt 17 ] || ([ "$docker_version_part1" -eq 17 ] && [ "$docker_version_part2" -lt 6 ])
-		then
-			error "Need to upgrade docker package to 20.10.10+."
-			exit 1
-		fi
-	else
-		error "Failed to parse docker version."
-		exit 1
-	fi
+      note "Version: $version"
+      # Check version compatibility (in your case, at least version 17.6)
+      if [ "$version_part1" -lt 5 ] || ([ "$version_part1" -eq 1 ] && [ "$version_part2" -lt 0 ]); then
+          error "Need to upgrade to version 17.6 or higher."
+          exit 1
+      fi
+  else
+      error "Failed to parse version."
+      exit 1
+  fi
 }
 
 function check_dockercompose {
