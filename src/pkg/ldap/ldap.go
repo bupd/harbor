@@ -180,7 +180,10 @@ func (s *Session) SearchUser(username string) ([]model.User, error) {
 			}
 			u.GroupDNList = groupDNList
 		}
-		if "true" == config.GetLDAPNestedAuth() {
+		nestedAuth := strings.TrimSpace(config.GetLDAPNestedAuth())
+		log.Debugf("ldap nested auth is set to %v \n", nestedAuth)
+
+		if nestedAuth == "true" {
 			log.Debugf("Searching for nested groups")
 			nestedGroupDNList := []string{}
 			nestedGroupFilter := createNestedGroupFilter(ldapEntry.DN, s.groupCfg.Filter)
