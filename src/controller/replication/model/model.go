@@ -330,7 +330,7 @@ func parseTrigger(str string) (*model.Trigger, error) {
 			}
 		default:
 			log.Warningf("unknown trigger type: %s", item.Kind)
-			//nolint:nilnil // Returning nil,nil is intentional for unknown trigger types
+			//nolint:nilnil // unknown trigger type
 			return nil, nil
 		}
 	}
