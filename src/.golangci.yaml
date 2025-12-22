@@ -11,6 +11,7 @@ linters:
     - ineffassign
     - misspell
     - nilerr
+    - nilnil
     - noctx
     - revive
     - staticcheck
