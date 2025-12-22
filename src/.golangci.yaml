@@ -16,20 +16,21 @@ linters:
     - staticcheck
     - unconvert
     - unused
+    - usestdlibvars
     - whitespace
   settings:
     goheader:
       template-path: copyright.tmpl
     gosec:
       excludes:
-        - G101  # hardcoded credentials (variable names, not actual secrets)
-        - G110  # potential DoS via decompression bomb
-        - G112  # potential slowloris attack
-        - G114  # net/http serve without timeouts
-        - G115  # integer overflow conversion
-        - G306  # WriteFile permissions
-        - G402  # TLS settings (intentionally configurable)
-        - G404  # weak random (used for shuffling, not crypto)
+        - G101
+        - G110
+        - G112
+        - G114
+        - G115
+        - G306
+        - G402
+        - G404
     misspell:
       locale: US,UK
     staticcheck:
