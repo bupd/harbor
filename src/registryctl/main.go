@@ -51,7 +51,7 @@ type RegistryCtl struct {
 
 // Start the registry controller
 func (s *RegistryCtl) Start() {
-	regCtl := &http.Server{
+	regCtl := &http.Server{ //nolint:gosec // G112: Consider adding ReadHeaderTimeout
 		Addr:      ":" + s.ServerConf.Port,
 		Handler:   s.Handler,
 		TLSConfig: common_http.NewServerTLSConfig(),

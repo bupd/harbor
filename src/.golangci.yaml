@@ -6,6 +6,7 @@ linters:
     - copyloopvar
     - errcheck
     - goheader
+    - gosec
     - govet
     - ineffassign
     - misspell
@@ -16,6 +17,13 @@ linters:
   settings:
     goheader:
       template-path: copyright.tmpl
+    gosec:
+      excludes:
+        - G101
+        - G306
+        - G115
+        - G402
+        - G404
     misspell:
       locale: US,UK
     staticcheck:

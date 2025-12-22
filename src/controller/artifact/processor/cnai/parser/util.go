@@ -42,7 +42,7 @@ func untar(reader io.Reader) ([]byte, error) {
 			continue
 		}
 
-		if _, err := io.Copy(&buf, tr); err != nil {
+		if _, err := io.Copy(&buf, tr); err != nil { //nolint:gosec // G110: Trusted input from registry
 			return nil, fmt.Errorf("failed to copy content to buffer: %w", err)
 		}
 	}

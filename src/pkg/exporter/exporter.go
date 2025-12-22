@@ -97,7 +97,7 @@ func newServer(opt *Opt, _ *prometheus.Registry) *http.Server {
 		</html>`))
 	})
 
-	return &http.Server{
+	return &http.Server{ //nolint:gosec // G112: Exporter server, consider adding timeouts
 		Addr:    fmt.Sprintf(":%d", opt.Port),
 		Handler: exporterMux,
 	}
