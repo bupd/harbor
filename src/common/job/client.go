@@ -124,7 +124,7 @@ func (d *DefaultClient) SubmitJob(jd *models.JobData) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b)) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return "", err
 	}
@@ -154,7 +154,7 @@ func (d *DefaultClient) SubmitJob(jd *models.JobData) (string, error) {
 // GetJobLog call jobservice API to get the log of a job.  It only accepts the UUID of the job
 func (d *DefaultClient) GetJobLog(uuid string) ([]byte, error) {
 	url := d.endpoint + "/api/v1/jobs/" + uuid + "/log"
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +179,7 @@ func (d *DefaultClient) GetJobLog(uuid string) ([]byte, error) {
 // GetExecutions ...
 func (d *DefaultClient) GetExecutions(periodicJobID string) ([]job.Stats, error) {
 	url := fmt.Sprintf("%s/api/v1/jobs/%s/executions?page_number=1&page_size=100", d.endpoint, periodicJobID)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +232,7 @@ func (d *DefaultClient) PostAction(uuid, action string) error {
 // GetJobServiceConfig retrieves the job service configuration
 func (d *DefaultClient) GetJobServiceConfig() (*job.Config, error) {
 	url := d.endpoint + "/api/v1/config"
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, err
 	}

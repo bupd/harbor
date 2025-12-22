@@ -62,7 +62,7 @@ func newClient(reg *model.Registry) *client {
 func (c *client) getDockerRepositories() ([]*repository, error) {
 	var repositories []*repository
 	url := fmt.Sprintf("%s/artifactory/api/repositories?packageType=docker", c.url)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return repositories, err
 	}
@@ -92,7 +92,7 @@ func (c *client) createDockerRepository(name string) error {
 	}
 
 	url := fmt.Sprintf("%s/artifactory/api/repositories/%s", c.url, name)
-	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body)) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}

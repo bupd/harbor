@@ -69,7 +69,7 @@ func (c *Client) refreshToken() error {
 		return fmt.Errorf("marshal credential error: %v", err)
 	}
 
-	request, err := http.NewRequest(http.MethodPost, baseURL+loginPath, bytes.NewReader(b))
+	request, err := http.NewRequest(http.MethodPost, baseURL+loginPath, bytes.NewReader(b)) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (c *Client) refreshToken() error {
 func (c *Client) Do(method, path string, body io.Reader) (*http.Response, error) {
 	url := baseURL + path
 	log.Infof("%s %s", method, url)
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequest(method, url, body) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, err
 	}

@@ -89,7 +89,7 @@ func Ping(addr, identity, username, password string,
 func newClient(addr, identity, username, password string,
 	timeout int, tls, insecure bool) (*smtp.Client, error) {
 	log.Debugf("establishing TCP connection with %s ...", addr)
-	conn, err := net.DialTimeout("tcp", addr,
+	conn, err := net.DialTimeout("tcp", addr, //nolint:noctx // TODO: Add context support
 		time.Duration(timeout)*time.Second)
 	if err != nil {
 		return nil, err
@@ -106,7 +106,7 @@ func newClient(addr, identity, username, password string,
 			ServerName:         host,
 			InsecureSkipVerify: insecure,
 		})
-		if err = tlsConn.Handshake(); err != nil {
+		if err = tlsConn.Handshake(); err != nil { //nolint:noctx // TODO: Add context support
 			return nil, err
 		}
 

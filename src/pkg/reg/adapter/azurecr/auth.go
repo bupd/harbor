@@ -77,7 +77,7 @@ func (a *authorizer) Modify(req *http.Request) error {
 		return err
 	}
 
-	tokenReq, err := http.NewRequest(http.MethodGet, url.String(), nil)
+	tokenReq, err := http.NewRequest(http.MethodGet, url.String(), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil
 	}
@@ -116,7 +116,7 @@ func (a *authorizer) buildTokenAPI(u *url.URL) (*url.URL, error) {
 		return nil, err
 	}
 
-	resp, err := a.client.Get(v2URL.String())
+	resp, err := a.client.Get(v2URL.String()) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, err
 	}

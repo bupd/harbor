@@ -70,7 +70,7 @@ func (c *Client) getAndIteratePagination(endpoint string, v any) error {
 
 	resources := reflect.Indirect(reflect.New(elemType))
 	for len(endpoint) > 0 {
-		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil) //nolint:noctx // TODO: Add context support
 		if err != nil {
 			return err
 		}
@@ -121,7 +121,7 @@ func (c *Client) getRepositories() ([]*model.Repository, error) {
 		return nil, err
 	}
 	for len(endpoint) > 0 {
-		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil) //nolint:noctx // TODO: Add context support
 		if err != nil {
 			return nil, err
 		}
@@ -202,7 +202,7 @@ func (c *Client) getNamespaces() ([]Account, error) {
 		return nil, err
 	}
 	for len(endpoint) > 0 {
-		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil) //nolint:noctx // TODO: Add context support
 		if err != nil {
 			return nil, err
 		}
@@ -266,7 +266,7 @@ func (c *Client) createRepository(repository string) error {
 
 	urlAPI := fmt.Sprintf("%s/api/v0/repositories/%s", c.url, namespace)
 	log.Debugf("Creating repo %s in DTR at %s", repositoryName, urlAPI)
-	req, err := http.NewRequest(http.MethodPost, urlAPI, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, urlAPI, bytes.NewReader(body)) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}
@@ -309,7 +309,7 @@ func (c *Client) createNamespace(namespace string) error {
 
 	urlAPI := fmt.Sprintf("%s/enzi/v0/accounts", c.url)
 	log.Debugf("Creating namespace %s in DTR at %s", namespace, urlAPI)
-	req, err := http.NewRequest(http.MethodPost, urlAPI, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, urlAPI, bytes.NewReader(body)) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}

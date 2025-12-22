@@ -83,7 +83,7 @@ func (a *authorizer) initialize(u *url.URL) error {
 		return err
 	}
 	a.url = url
-	resp, err := a.client.Get(a.url.String())
+	resp, err := a.client.Get(a.url.String()) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}

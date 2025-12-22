@@ -156,7 +156,7 @@ type client struct {
 }
 
 func (c *client) Ping() error {
-	req, err := http.NewRequest(http.MethodGet, buildPingURL(c.url), nil)
+	req, err := http.NewRequest(http.MethodGet, buildPingURL(c.url), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (c *client) Catalog() ([]string, error) {
 }
 
 func (c *client) catalog(url string) ([]string, string, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, "", err
 	}
@@ -239,7 +239,7 @@ func (c *client) ListTags(repository string) ([]string, error) {
 }
 
 func (c *client) listTags(url string) ([]string, string, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, "", err
 	}
@@ -263,7 +263,7 @@ func (c *client) listTags(url string) ([]string, string, error) {
 }
 
 func (c *client) ManifestExist(repository, reference string) (bool, *distribution.Descriptor, error) {
-	req, err := http.NewRequest(http.MethodHead, buildManifestURL(c.url, repository, reference), nil)
+	req, err := http.NewRequest(http.MethodHead, buildManifestURL(c.url, repository, reference), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return false, nil, err
 	}
@@ -287,7 +287,7 @@ func (c *client) ManifestExist(repository, reference string) (bool, *distributio
 
 func (c *client) PullManifest(repository, reference string, acceptedMediaTypes ...string) (
 	distribution.Manifest, string, error) {
-	req, err := http.NewRequest(http.MethodGet, buildManifestURL(c.url, repository, reference), nil)
+	req, err := http.NewRequest(http.MethodGet, buildManifestURL(c.url, repository, reference), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, "", err
 	}
@@ -316,7 +316,7 @@ func (c *client) PullManifest(repository, reference string, acceptedMediaTypes .
 }
 
 func (c *client) PushManifest(repository, reference, mediaType string, payload []byte) (string, error) {
-	req, err := http.NewRequest(http.MethodPut, buildManifestURL(c.url, repository, reference),
+	req, err := http.NewRequest(http.MethodPut, buildManifestURL(c.url, repository, reference), //nolint:noctx // TODO: Add context support
 		bytes.NewReader(payload))
 	if err != nil {
 		return "", err
@@ -344,7 +344,7 @@ func (c *client) DeleteManifest(repository, reference string) error {
 		}
 		reference = string(desc.Digest)
 	}
-	req, err := http.NewRequest(http.MethodDelete, buildManifestURL(c.url, repository, reference), nil)
+	req, err := http.NewRequest(http.MethodDelete, buildManifestURL(c.url, repository, reference), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}
@@ -357,7 +357,7 @@ func (c *client) DeleteManifest(repository, reference string) error {
 }
 
 func (c *client) BlobExist(repository, digest string) (bool, error) {
-	req, err := http.NewRequest(http.MethodHead, buildBlobURL(c.url, repository, digest), nil)
+	req, err := http.NewRequest(http.MethodHead, buildBlobURL(c.url, repository, digest), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return false, err
 	}
@@ -373,7 +373,7 @@ func (c *client) BlobExist(repository, digest string) (bool, error) {
 }
 
 func (c *client) PullBlob(repository, digest string) (int64, io.ReadCloser, error) {
-	req, err := http.NewRequest(http.MethodGet, buildBlobURL(c.url, repository, digest), nil)
+	req, err := http.NewRequest(http.MethodGet, buildBlobURL(c.url, repository, digest), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return 0, nil, err
 	}
@@ -400,7 +400,7 @@ func (c *client) PullBlob(repository, digest string) (int64, io.ReadCloser, erro
 
 // PullBlobChunk pulls the specified blob, but by chunked, refer to https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pull for more details.
 func (c *client) PullBlobChunk(repository, digest string, _ int64, start, end int64) (int64, io.ReadCloser, error) {
-	req, err := http.NewRequest(http.MethodGet, buildBlobURL(c.url, repository, digest), nil)
+	req, err := http.NewRequest(http.MethodGet, buildBlobURL(c.url, repository, digest), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return 0, nil, err
 	}
@@ -457,7 +457,7 @@ func (c *client) PushBlobChunk(repository, digest string, blobSize int64, chunk 
 	if lastChunk {
 		method = http.MethodPut
 	}
-	req, err := http.NewRequest(method, url, chunk)
+	req, err := http.NewRequest(method, url, chunk) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return location, end, err
 	}
@@ -481,7 +481,7 @@ func (c *client) PushBlobChunk(repository, digest string, blobSize int64, chunk 
 }
 
 func (c *client) getUploadStatus(location string) (string, int64, error) {
-	req, err := http.NewRequest(http.MethodGet, location, nil)
+	req, err := http.NewRequest(http.MethodGet, location, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return location, -1, err
 	}
@@ -519,7 +519,7 @@ func parseContentRange(cr string) (int64, int64, error) {
 }
 
 func (c *client) initiateBlobUpload(repository string) (string, string, error) {
-	req, err := http.NewRequest(http.MethodPost, buildInitiateBlobUploadURL(c.url, repository), nil)
+	req, err := http.NewRequest(http.MethodPost, buildInitiateBlobUploadURL(c.url, repository), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return "", "", err
 	}
@@ -537,7 +537,7 @@ func (c *client) monolithicBlobUpload(location, digest string, size int64, data 
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPut, url, data)
+	req, err := http.NewRequest(http.MethodPut, url, data) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}
@@ -551,7 +551,7 @@ func (c *client) monolithicBlobUpload(location, digest string, size int64, data 
 }
 
 func (c *client) MountBlob(srcRepository, digest, dstRepository string) error {
-	req, err := http.NewRequest(http.MethodPost, buildMountBlobURL(c.url, dstRepository, digest, srcRepository), nil)
+	req, err := http.NewRequest(http.MethodPost, buildMountBlobURL(c.url, dstRepository, digest, srcRepository), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}
@@ -565,7 +565,7 @@ func (c *client) MountBlob(srcRepository, digest, dstRepository string) error {
 }
 
 func (c *client) DeleteBlob(repository, digest string) error {
-	req, err := http.NewRequest(http.MethodDelete, buildBlobURL(c.url, repository, digest), nil)
+	req, err := http.NewRequest(http.MethodDelete, buildBlobURL(c.url, repository, digest), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return err
 	}

@@ -110,7 +110,7 @@ func NewClient(url, authType, accessCredential string, skipCertVerify bool) (Cli
 func (c *basicClient) GetMetadata() (*ScannerAdapterMetadata, error) {
 	def := c.spec.Metadata()
 
-	request, err := http.NewRequest(http.MethodGet, def.URL, nil)
+	request, err := http.NewRequest(http.MethodGet, def.URL, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, errors.Wrap(err, "v1 client: get metadata")
 	}
@@ -145,7 +145,7 @@ func (c *basicClient) SubmitScan(req *ScanRequest) (*ScanResponse, error) {
 	}
 
 	def := c.spec.SubmitScan()
-	request, err := http.NewRequest(http.MethodPost, def.URL, bytes.NewReader(data))
+	request, err := http.NewRequest(http.MethodPost, def.URL, bytes.NewReader(data)) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, errors.Wrap(err, "v1 client: submit scan")
 	}
@@ -181,7 +181,7 @@ func (c *basicClient) GetScanReport(scanRequestID, reportMIMEType string, urlPar
 	if len(urlParameter) > 0 {
 		reportURL = fmt.Sprintf("%s?%s", def.URL, urlParameter)
 	}
-	req, err := http.NewRequest(http.MethodGet, reportURL, nil)
+	req, err := http.NewRequest(http.MethodGet, reportURL, nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return "", errors.Wrap(err, "v1 client: get scan report")
 	}

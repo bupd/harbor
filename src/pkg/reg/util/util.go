@@ -38,7 +38,7 @@ func Ping(registry *model.Registry) (string, string, error) {
 		Transport: GetHTTPTransport(registry.Insecure),
 	}
 
-	resp, err := client.Get(registry.URL + "/v2/")
+	resp, err := client.Get(registry.URL + "/v2/") //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return "", "", err
 	}

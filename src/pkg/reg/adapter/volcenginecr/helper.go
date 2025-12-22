@@ -51,7 +51,7 @@ func getRealmService(host string, insecure bool) (string, string, error) {
 		Transport: util.GetHTTPTransport(insecure),
 	}
 
-	resp, err := client.Get(host + "/v2/")
+	resp, err := client.Get(host + "/v2/") //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return "", "", err
 	}

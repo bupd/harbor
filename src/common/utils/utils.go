@@ -103,7 +103,7 @@ func TestTCPConn(addr string, timeout, interval int) error {
 			case <-cancel:
 				break loop
 			default:
-				conn, err := net.DialTimeout("tcp", addr, time.Duration(n)*time.Second)
+				conn, err := net.DialTimeout("tcp", addr, time.Duration(n)*time.Second) //nolint:noctx // TODO: Add context support
 				if err != nil {
 					log.Errorf("failed to connect to tcp://%s, retry after %d seconds :%v",
 						addr, interval, err)

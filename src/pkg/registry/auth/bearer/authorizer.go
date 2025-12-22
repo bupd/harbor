@@ -105,7 +105,7 @@ func (a *authorizer) fetchToken(scopes []*scope) (*token, error) {
 	}
 	url.RawQuery = query.Encode()
 
-	req, err := http.NewRequest(http.MethodGet, url.String(), nil)
+	req, err := http.NewRequest(http.MethodGet, url.String(), nil) //nolint:noctx // TODO: Add context support
 	if err != nil {
 		return nil, err
 	}
