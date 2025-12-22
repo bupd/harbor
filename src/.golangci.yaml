@@ -14,6 +14,7 @@ linters:
     - nilnil
     - revive
     - staticcheck
+    - unconvert
     - unused
     - whitespace
   settings:

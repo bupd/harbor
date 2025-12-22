@@ -257,7 +257,7 @@ func toDaoModel(registry *model.Registry) (*dao.Registry, error) {
 		ID:           registry.ID,
 		URL:          registry.URL,
 		Name:         registry.Name,
-		Type:         string(registry.Type),
+		Type:         registry.Type,
 		Insecure:     registry.Insecure,
 		Description:  registry.Description,
 		Status:       registry.Status,
@@ -275,7 +275,7 @@ func toDaoModel(registry *model.Registry) (*dao.Registry, error) {
 			return nil, err
 		}
 
-		m.CredentialType = string(credentialType)
+		m.CredentialType = credentialType
 		m.AccessKey = registry.Credential.AccessKey
 		m.AccessSecret = encrypted
 	}
