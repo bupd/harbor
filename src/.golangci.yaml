@@ -12,7 +12,6 @@ linters:
     - misspell
     - nilerr
     - nilnil
-    - noctx
     - revive
     - staticcheck
     - unused

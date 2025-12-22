@@ -64,7 +64,7 @@ func NewClient(registry *model.Registry) (*Client, error) {
 }
 
 func (c *Client) newRequest(method, url string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, body) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, err
 	}

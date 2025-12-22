@@ -39,7 +39,7 @@ import (
 func HTTPStatusCodeHealthChecker(method string, url string, header http.Header,
 	timeout time.Duration, statusCode int) health.Checker {
 	return health.CheckFunc(func() error {
-		req, err := http.NewRequest(method, url, nil) //nolint:noctx // TODO: Add context support
+		req, err := http.NewRequest(method, url, nil)
 		if err != nil {
 			return fmt.Errorf("failed to create request: %v", err)
 		}

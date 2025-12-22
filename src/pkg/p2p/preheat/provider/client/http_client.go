@@ -99,7 +99,7 @@ func (hc *HTTPClient) get(url string, cred *auth.Credential, parmas map[string]s
 		return nil, errors.New("empty url")
 	}
 
-	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (hc *HTTPClient) post(url string, cred *auth.Credential, body any, options 
 		bodyContent = strings.NewReader(string(content))
 		log.Debugf("POST body: %s", string(content))
 	}
-	req, err := http.NewRequest(http.MethodPost, url, bodyContent) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodPost, url, bodyContent)
 	if err != nil {
 		return nil, err
 	}

@@ -42,7 +42,7 @@ func (hc HarborClient) harborURL(p string) url.URL {
 // Get ...
 func (hc HarborClient) Get(p string) (*http.Response, error) {
 	hbrURL := hc.harborURL(p)
-	res, err := http.Get(hbrURL.String()) //nolint:noctx // TODO: Add context support
+	res, err := http.Get(hbrURL.String())
 	if err != nil {
 		return nil, err
 	}

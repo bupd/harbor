@@ -74,7 +74,7 @@ func (a *Auth) Authenticate(ctx context.Context, m models.AuthModel) (*models.Us
 		}
 		log.Warningf("Failed to refresh configuration for HTTP Auth Proxy Authenticator, error: %v, old settings will be used", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, a.Endpoint, nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodPost, a.Endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request, error: %v", err)
 	}

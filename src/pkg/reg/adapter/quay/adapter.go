@@ -197,7 +197,7 @@ func (a *adapter) createNamespace(namespace *model.Namespace) error {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, buildOrgURL(a.registry.URL, ""), bytes.NewBuffer(b)) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodPost, buildOrgURL(a.registry.URL, ""), bytes.NewBuffer(b))
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func (a *adapter) createNamespace(namespace *model.Namespace) error {
 
 // getNamespace get namespace from Quay, if the namespace not found, two nil would be returned.
 func (a *adapter) getNamespace(namespace string) (*model.Namespace, error) {
-	req, err := http.NewRequest(http.MethodGet, buildOrgURL(a.registry.URL, namespace), nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodGet, buildOrgURL(a.registry.URL, namespace), nil)
 	if err != nil {
 		return nil, err
 	}

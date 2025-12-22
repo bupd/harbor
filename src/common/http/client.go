@@ -70,7 +70,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 
 // Get ...
 func (c *Client) Get(url string, v ...any) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func (c *Client) Get(url string, v ...any) error {
 
 // Head ...
 func (c *Client) Head(url string) error {
-	req, err := http.NewRequest(http.MethodHead, url, nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodHead, url, nil)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (c *Client) Post(url string, v ...any) error {
 		}
 	}
 
-	req, err := http.NewRequest(http.MethodPost, url, reader) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodPost, url, reader)
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func (c *Client) Put(url string, v ...any) error {
 		reader = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequest(http.MethodPut, url, reader) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodPut, url, reader)
 	if err != nil {
 		return err
 	}
@@ -144,7 +144,7 @@ func (c *Client) Put(url string, v ...any) error {
 
 // Delete ...
 func (c *Client) Delete(url string) error {
-	req, err := http.NewRequest(http.MethodDelete, url, nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func (c *Client) GetAndIteratePagination(endpoint string, v any) error {
 
 	resources := reflect.Indirect(reflect.New(elemType))
 	for len(endpoint) > 0 {
-		req, err := http.NewRequest(http.MethodGet, endpoint, nil) //nolint:noctx // TODO: Add context support
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 		if err != nil {
 			return err
 		}

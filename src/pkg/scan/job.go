@@ -570,7 +570,7 @@ func makeBearerAuthorization(robotAccount *model.Robot, tokenURL string, reposit
 	query.Add("scope", fmt.Sprintf("repository:%s:pull", repository))
 	u.RawQuery = query.Encode()
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
 		return "", err
 	}

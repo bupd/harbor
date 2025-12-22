@@ -102,7 +102,7 @@ func (wj *WebhookJob) execute(_ job.Context, params map[string]any) error {
 	payload := params["payload"].(string)
 	address := params["address"].(string)
 
-	req, err := http.NewRequest(http.MethodPost, address, bytes.NewReader([]byte(payload))) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodPost, address, bytes.NewReader([]byte(payload)))
 	if err != nil {
 		return errors.Wrap(err, "error to generate request")
 	}

@@ -114,7 +114,7 @@ func (dc *defaultClient) PasswordAuth(username, password string) (*oauth2.Token,
 
 func (dc *defaultClient) GetUserInfo(token string) (*UserInfo, error) {
 	userInfoURL := dc.endpoint + UserInfoURLSuffix
-	req, err := http.NewRequest(http.MethodGet, userInfoURL, nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodGet, userInfoURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func (dc *defaultClient) SearchUser(username string) ([]*SearchUserEntry, error)
 	}
 	url := dc.endpoint + UsersURLSuffix
 
-	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}

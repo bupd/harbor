@@ -93,7 +93,7 @@ func (bc *basicClient) SendEvent(evt *Event) error {
 	}
 
 	// New post request
-	req, err := http.NewRequest(http.MethodPost, evt.URL, strings.NewReader(string(data))) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodPost, evt.URL, strings.NewReader(string(data)))
 	if err != nil {
 		return err
 	}

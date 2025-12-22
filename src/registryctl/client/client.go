@@ -81,7 +81,7 @@ func (c *client) Health() error {
 
 // DeleteBlob ...
 func (c *client) DeleteBlob(reference string) (err error) {
-	req, err := http.NewRequest(http.MethodDelete, buildBlobURL(c.baseURL, reference), nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodDelete, buildBlobURL(c.baseURL, reference), nil)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (c *client) DeleteBlob(reference string) (err error) {
 
 // DeleteManifest ...
 func (c *client) DeleteManifest(repository, reference string) (err error) {
-	req, err := http.NewRequest(http.MethodDelete, buildManifestURL(c.baseURL, repository, reference), nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodDelete, buildManifestURL(c.baseURL, repository, reference), nil)
 	if err != nil {
 		return err
 	}

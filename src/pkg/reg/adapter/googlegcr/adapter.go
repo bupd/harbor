@@ -160,7 +160,7 @@ func (a adapter) HealthCheck() (string, error) {
 */
 func (a adapter) listGcrTagsByRef(repository, reference string) ([]string, string, error) {
 	u := buildTagListURL(a.registry.URL, repository)
-	req, err := http.NewRequest(http.MethodGet, u, nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -214,7 +214,7 @@ func (a adapter) DeleteManifest(repository, reference string) error {
 			WithMessagef("%s:%s not found", repository, reference)
 	}
 	for _, t := range append(tags, d) {
-		req, err := http.NewRequest(http.MethodDelete, buildManifestURL(a.registry.URL, repository, t), nil) //nolint:noctx // TODO: Add context support
+		req, err := http.NewRequest(http.MethodDelete, buildManifestURL(a.registry.URL, repository, t), nil)
 		if err != nil {
 			return err
 		}
@@ -237,7 +237,7 @@ func buildManifestURL(endpoint, repository, reference string) string {
 }
 
 func (a *adapter) DeleteTag(repository, tag string) error {
-	req, err := http.NewRequest(http.MethodDelete, buildManifestURL(a.registry.URL, repository, tag), nil) //nolint:noctx // TODO: Add context support
+	req, err := http.NewRequest(http.MethodDelete, buildManifestURL(a.registry.URL, repository, tag), nil)
 	if err != nil {
 		return err
 	}
