@@ -4,6 +4,7 @@ linters:
   enable:
     - bodyclose
     - copyloopvar
+    - dupl
     - errcheck
     - goheader
     - gosec
@@ -21,6 +22,8 @@ linters:
   settings:
     goheader:
       template-path: copyright.tmpl
+    dupl:
+      threshold: 300
     gosec:
       excludes:
         - G101
