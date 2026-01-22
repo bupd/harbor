@@ -31,7 +31,11 @@
       "Bash(task --list)",
       "Bash(docker manifest inspect:*)",
       "Bash(go build:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(gh issue view:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh pr view:*)",
+      "Bash(gh run view:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
