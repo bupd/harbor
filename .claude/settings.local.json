@@ -35,7 +35,9 @@
       "Bash(gh issue view:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(gh pr view:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(gopls workspace_symbol:*)",
+      "Bash(gopls references:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
