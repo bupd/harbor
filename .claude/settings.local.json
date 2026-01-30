@@ -63,7 +63,9 @@
       "Bash(gh pr view:*)",
       "Bash(gh run view:*)",
       "Bash(gopls workspace_symbol:*)",
-      "Bash(gopls references:*)"
+      "Bash(gopls references:*)",
+      "Bash(task:*)",
+      "WebFetch(domain:*.github.io)"
     ]
   },
   "enableAllProjectMcpServers": true,

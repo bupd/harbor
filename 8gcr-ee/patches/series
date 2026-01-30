@@ -1,0 +1,21 @@
+# 8gcr-ee Patch Series
+# Patches listed in application order (one per line)
+# Comments and blank lines are ignored
+#
+# To import patches:
+#   stg init
+#   stg import -s 8gcr-ee/patches/series
+#
+# Patches will be extracted from cr/2.14.2 branch:
+# 0001-cr-init-build-setup.patch
+# 0002-ldap-admin-group-filter.patch
+# 0003-hybrid-auth-multi-source.patch
+# 0004-sftp-replication.patch
+# 0005-randomise-scheduling.patch
+# 0006-improved-copy-pull-command.patch
+# 0007-conditional-immutability.patch
+# 0008-harbor-satellite-adapter.patch
+# 0009-subscription-menu.patch
+# 0010-proxy-cache-fix.patch
+# 0011-misc-fixes.patch
+# 0012-schema-migrations.patch
