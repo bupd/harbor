@@ -1,45 +1,70 @@
 ---
 name: stgit
-description: Manage patch stacks with StGit (Stacked Git). Use when working with 8gcr-ee patches, rebasing patches to new OSS Harbor versions, creating new feature patches, modifying existing patches, resolving patch conflicts, or exporting/importing patch series.
-argument-hint: "[command] [patch-name]"
+description: Manage 8gcr-ee patch stack on OSS Harbor using StGit. Use for rebasing patches to new Harbor versions, creating/modifying patches, resolving conflicts, or importing/exporting the patch series.
+argument-hint: "[task]"
 allowed-tools: Bash(stg *), Bash(git *), Read, Glob, Grep
 ---
 
-# StGit Patch Management
+# 8gcr-ee Patch Management with StGit
 
-StGit manages a stack of patches on top of a Git branch for 8gcr-ee Enterprise Edition features on OSS Harbor.
+Maintains Enterprise Edition patches on top of OSS Harbor using StGit.
 
-## Essential Commands
+## Project-Specific Paths
 
-| Task | Command |
-|------|---------|
-| Initialize | `stg init` |
-| Import patches | `stg import -s 8gcr-ee/patches/series` |
-| List stack | `stg series` |
-| Apply all | `stg push -a` |
-| Remove all | `stg pop -a` |
-| Update patch | `stg refresh` |
-| Export patches | `stg export -d 8gcr-ee/patches/ -n` |
-
-## Series Status Symbols
-
-- `>` Current (topmost) patch
-- `+` Applied patch
-- `-` Unapplied patch
-
-## Additional Resources
-
-Load these files based on the task at hand:
-
-| Need | File |
+| Item | Path |
 |------|------|
-| Step-by-step workflows (rebase, create, modify patches) | [workflows.md](workflows.md) |
-| Full command reference | [commands.md](commands.md) |
-| Fixing errors and conflicts | [troubleshooting.md](troubleshooting.md) |
+| Patches directory | `8gcr-ee/patches/` |
+| Series file | `8gcr-ee/patches/series` |
+| Decision record | `8gcr-ee/decision-records/0001-managing-8gcr-modifications-on-harbor.md` |
 
-## Project Conventions
+## Project Commands
 
-- Patches location: `8gcr-ee/patches/`
-- Series file: `8gcr-ee/patches/series`
-- Naming: `NNNN-short-description.patch` (4-digit prefix)
-- Schema migrations patch always last in series
+```bash
+# Import all patches onto OSS Harbor
+stg init && stg import -s 8gcr-ee/patches/series
+
+# Export patches back to files (after changes)
+stg export -d 8gcr-ee/patches/ -n
+```
+
+## Conventions
+
+- **Naming:** `NNNN-short-description.patch` (4-digit prefix, e.g., `0001-`)
+- **Ordering:** Schema migrations patch (`0012-schema-migrations`) always last
+- **Location:** All patches in `8gcr-ee/patches/`, listed in `series` file
+
+## Key Workflows
+
+### Rebase to New OSS Harbor Version
+
+```bash
+stg pop -a                              # remove all patches
+stg rebase v2.15.0                      # rebase to new version
+stg push                                # apply one-by-one, resolve conflicts
+stg export -d 8gcr-ee/patches/ -n       # export updated patches
+```
+
+### Modify Existing Patch
+
+```bash
+stg goto <patch-name>                   # navigate to patch
+# make changes...
+stg refresh                             # update patch
+stg push -a                             # re-apply remaining
+stg export -d 8gcr-ee/patches/ -n       # export
+```
+
+### Create New Patch
+
+```bash
+stg push -a                             # ensure all applied
+stg new 0013-feature-name -m "feat: description"
+# implement...
+stg refresh
+stg export -d 8gcr-ee/patches/ -n
+echo "0013-feature-name.patch" >> 8gcr-ee/patches/series
+```
+
+## Series Status
+
+`stg series` output: `>` current, `+` applied, `-` unapplied
