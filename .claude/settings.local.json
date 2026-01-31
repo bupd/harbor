@@ -92,7 +92,9 @@
       "Bash(go clean:*)",
       "Bash(GOTOOLCHAIN=auto go build:*)",
       "Bash(gofmt:*)",
-      "Bash(stg import:*)"
+      "Bash(stg import:*)",
+      "Bash(wc:*)",
+      "Bash(stg status:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
