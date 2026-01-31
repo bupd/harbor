@@ -2,7 +2,7 @@
 
 This directory contains patches for 8gcr Enterprise Edition features on top of OSS Harbor.
 
-See [ADR-0001](../../docs/adr/0001-managing-8gcr-modifications-on-harbor.md) for background and design decisions.
+See [ADR-0001](../decision-records/0001-managing-8gcr-modifications-on-harbor.md) for background and design decisions.
 
 ## Prerequisites
 

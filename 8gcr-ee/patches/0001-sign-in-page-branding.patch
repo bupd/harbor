@@ -1,0 +1,26 @@
+From 7f0312f2b29023b0da3c0b8a914466fac19675d2 Mon Sep 17 00:00:00 2001
+From: Vadim Bauer <vb@container-registry.com>
+Date: Mon, 17 Feb 2025 09:32:05 +0100
+Subject: [PATCH] feat(portal): update sign-in page branding
+
+Update the "More Info" link on the sign-in page to point to
+container-registry.com instead of the Harbor GitHub repository.
+---
+ src/portal/src/app/account/sign-in/sign-in.component.html | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/portal/src/app/account/sign-in/sign-in.component.html b/src/portal/src/app/account/sign-in/sign-in.component.html
+index 5108d43164..29a25e286e 100644
+--- a/src/portal/src/app/account/sign-in/sign-in.component.html
++++ b/src/portal/src/app/account/sign-in/sign-in.component.html
+@@ -178,7 +178,7 @@
+                     }">
+                     <a
+                         rel="noopener noreferrer"
+-                        href="https://github.com/goharbor/harbor"
++                        href="https://container-registry.com/"
+                         target="_blank"
+                         >{{ 'BUTTON.MORE_INFO' | translate }}</a
+                     >
+--
+2.52.0

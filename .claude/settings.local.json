@@ -65,7 +65,34 @@
       "Bash(gopls workspace_symbol:*)",
       "Bash(gopls references:*)",
       "Bash(task:*)",
-      "WebFetch(domain:*.github.io)"
+      "WebFetch(domain:*.github.io)",
+      "Bash(ls:*)",
+      "Bash(git add:*)",
+      "mcp__gopls__go_search",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(gh search:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh api:*)",
+      "Bash(gh pr view:*)",
+      "WebFetch(domain:openid.net)",
+      "WebSearch",
+      "Bash(xargs:*)",
+      "Bash(docker run:*)",
+      "Bash(POSTGRESQL_HOST=localhost POSTGRESQL_PORT=5432 POSTGRESQL_USR=postgres POSTGRESQL_PWD=root123 POSTGRESQL_DATABASE=registry go test:*)",
+      "Bash(go get:*)",
+      "WebFetch(domain:docs.docker.com)",
+      "Bash(docker network ls:*)",
+      "WebFetch(domain:essamamdani.com)",
+      "WebFetch(domain:forums.docker.com)",
+      "Bash(docker inspect:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go version:*)",
+      "Bash(go clean:*)",
+      "Bash(GOTOOLCHAIN=auto go build:*)",
+      "Bash(gofmt:*)",
+      "Bash(stg import:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
@@ -73,5 +100,9 @@
     "Dagger",
     "gopls",
     "delve-mcp"
-  ]
+  ],
+  "sandbox": {
+    "enabled": false,
+    "autoAllowBashIfSandboxed": false
+  }
 }
