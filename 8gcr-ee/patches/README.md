@@ -6,11 +6,11 @@ See [ADR-0001](../decision-records/0001-managing-8gcr-modifications-on-harbor.md
 
 ## Prerequisites
 
-Install stgit:
-
-```bash
-brew install stgit
-```
+| Tool | Install | Purpose |
+|------|---------|---------|
+| [StGit](https://stacked-git.github.io/) | `brew install stgit` | Patch queue management on top of git |
+| [Git Worktree](https://git-scm.com/docs/git-worktree) | built-in with git | Parallel checkouts for patch source and wip branches |
+| [Worktrunk](https://worktrunk.dev/) | `brew install worktrunk` | Worktree management tool (optional, simplifies worktree setup) |
 
 ## Quick Reference
 
@@ -34,14 +34,52 @@ brew install stgit
 
 ## Workflows
 
+### Worktree Setup (Recommended)
+
+Use two worktrees so you can export patches from the wip branch directly into the patch source branch without switching branches:
+
+```bash
+# Using git worktree directly:
+git worktree add -b wip/applied ../harbor.wip main
+
+# Or using worktrunk (wt):
+wt add wip/applied
+```
+
+This gives you:
+```
+harbor/                  # patch source worktree (main) — commit patch files here
+harbor.wip/              # wip worktree (wip/applied) — apply & develop patches here
+```
+
 ### Applying Patches for Development
 
 ```bash
-git checkout main -b wip/applied
+# In the wip worktree:
 stg init
 stg import -S 8gcr-ee/patches/series
-# Work on wip/applied branch - DO NOT push or commit result
+# Work on the wip branch - DO NOT push or commit applied results
 ```
+
+### Flowing Changes Back to Patch Source
+
+After modifying patches in the wip worktree, export them to the patch source worktree and commit:
+
+```bash
+# In the wip worktree — export patches across worktrees:
+stg export -d /path/to/harbor/8gcr-ee/patches/
+
+# In the patch source worktree — commit the updated patch files:
+cd /path/to/harbor
+git add 8gcr-ee/patches/
+git commit -m "fix(patches): <description>"
+
+# Back in the wip worktree — rebase onto the updated patch source:
+cd /path/to/harbor.wip
+stg rebase main
+```
+
+This is the core loop: develop in wip, export to patch source, commit there, rebase wip.
 
 ### Fix a Failing Patch (Manual Apply)
 
@@ -62,8 +100,7 @@ stg goto 0002-ldap-admin-group-filter  # Jump to that patch
 git add -A
 stg refresh                            # Updates the patch
 stg push -a                            # Re-apply remaining patches
-stg export -d 8gcr-ee/patches/         # Export updated patches
-# Then commit the updated patch files to main
+# Export and commit — see "Flowing Changes Back to Patch Source" or "Export Patches After Changes"
 ```
 
 ### Creating a New Feature Patch
@@ -81,17 +118,30 @@ stg new 0013-my-feature -m "feat(scope): add my feature"
 # Update the patch
 stg refresh
 
-# Export patches (series file is updated automatically)
-stg export -d 8gcr-ee/patches/
+# Export and commit — see "Flowing Changes Back to Patch Source" or "Export Patches After Changes"
 ```
 
 ### Export Patches After Changes
 
+With worktrees (recommended):
+```bash
+# In wip worktree:
+stg export -d /path/to/harbor/8gcr-ee/patches/
+# In patch source worktree:
+cd /path/to/harbor
+git add 8gcr-ee/patches/
+git commit -m "fix(patches): <description>"
+```
+
+Without worktrees (single checkout):
 ```bash
 stg export -d 8gcr-ee/patches/
+git stash
 git checkout main
 git add 8gcr-ee/patches/
 git commit -m "fix(patches): <description>"
+git checkout wip/applied
+git stash pop
 ```
 
 ### Rebuild a Patch via Cherry-Pick
