@@ -282,7 +282,7 @@ index 8a38f88cbc..8cf67065f7 100644
  func (s *Session) searchGroup(groupDN string) ([]model.Group, error) {
  	return nil, nil
  }
- 
+
  // SearchGroup -- Search group in ldap authenticator, groupName is LDAP group DN.
  func (s *Session) SearchGroup(groupDN string) ([]model.Group, error) {
  	if _, err := goldap.ParseDN(groupDN); err != nil {

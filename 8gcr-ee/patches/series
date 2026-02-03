@@ -6,6 +6,6 @@
 #   stg init
 #   stg import -s 8gcr-ee/patches/series
 
-0001-sign-in-page-branding.patch
+0001-branding.patch
 0002-ldap-admin-group-filter.patch
 0003-hybrid-auth-multi-source.patch
