@@ -692,9 +692,10 @@ This repository is a fork of Harbor with 8gcr enterprise modifications managed a
 8gcr-ee/
 ├── patches/
 │   ├── series                    # Patch order (stgit format)
-│   ├── 0001-sign-in-page-branding.patch
+│   ├── 0001-branding.patch
 │   ├── 0002-ldap-admin-group-filter.patch
-│   └── 0003-hybrid-auth-multi-source.patch
+│   ├── 0003-hybrid-auth-multi-source.patch
+│   └── 0004-sftp-replication.patch
 └── decision-records/             # ADRs for 8gcr decisions
 ```
 
