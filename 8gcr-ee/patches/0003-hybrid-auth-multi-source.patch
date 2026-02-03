@@ -1,7 +1,6 @@
-From 69752eeebd5475cdcbf94af0c1c819cc04ba80ee Mon Sep 17 00:00:00 2001
+[PATCH] feat(auth): add hybrid auth for OIDC + local users
+
 From: bupd <bupdprasanth@gmail.com>
-Date: Tue, 10 Jun 2025 22:46:41 +0530
-Subject: [PATCH] feat(auth): add hybrid auth for OIDC + local users
 
 HybridAuth allows both OIDC and local admin authentication.
 Normally, when OIDC is enabled, only OIDC users can authenticate.
@@ -9,15 +8,15 @@ Enabling HybridAuth permits local DB admin logins alongside OIDC.
 
 Signed-off-by: bupd <bupdprasanth@gmail.com>
 ---
- src/controller/user/controller.go |  3 ++-
- src/core/auth/authenticator.go    | 13 ++++++++++++-
+ src/controller/user/controller.go |    3 ++-
+ src/core/auth/authenticator.go    |   13 ++++++++++++-
  2 files changed, 14 insertions(+), 2 deletions(-)
 
 diff --git a/src/controller/user/controller.go b/src/controller/user/controller.go
-index 33f24b95d4..e515915d99 100644
+index b7d71a12aa..e5a0c08ea0 100644
 --- a/src/controller/user/controller.go
 +++ b/src/controller/user/controller.go
-@@ -163,7 +163,8 @@ func (c *controller) Get(ctx context.Context, id int, opt *Option) (*commonmodel
+@@ -161,7 +161,8 @@ func (c *controller) Get(ctx context.Context, id int, opt *Option) (*commonmodel
  	if ok && lsc.User() != nil && lsc.User().UserID == id {
  		u.AdminRoleInAuth = lsc.User().AdminRoleInAuth
  	}
@@ -43,7 +42,7 @@ index 7134edc69e..3efb5cbdb1 100644
 @@ -255,6 +255,17 @@ func PostAuthenticate(ctx context.Context, u *models.User) error {
  	return helper.PostAuthenticate(ctx, u)
  }
-
+ 
 +// IsDBUser checks if the user is from DB of Harbor
 +func IsDBUser(ctx context.Context, username string) bool {
 +	u, err := user.Mgr.GetByName(ctx, username)
@@ -58,5 +57,3 @@ index 7134edc69e..3efb5cbdb1 100644
  // IsSuperUser checks if the user is super user(conventionally id == 1) of Harbor
  func IsSuperUser(ctx context.Context, username string) bool {
  	u, err := user.Mgr.GetByName(ctx, username)
---
-2.52.0

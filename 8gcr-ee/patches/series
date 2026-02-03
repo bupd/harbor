@@ -1,11 +1,4 @@
-# 8gcr-ee Patch Series
-# Patches listed in application order (one per line)
-# Comments and blank lines are ignored
-#
-# To import patches:
-#   stg init
-#   stg import -s 8gcr-ee/patches/series
-
+# This series applies on Git commit aaffa46b19889261e35fe29ec9528a1fdaabbd34
 0001-branding.patch
 0002-ldap-admin-group-filter.patch
 0003-hybrid-auth-multi-source.patch
