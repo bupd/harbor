@@ -94,7 +94,7 @@
       "Bash(gofmt:*)",
       "Bash(stg import:*)",
       "Bash(wc:*)",
-      "Bash(stg status:*)"
+      "Bash(stg:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
