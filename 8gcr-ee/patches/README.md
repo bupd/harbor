@@ -17,45 +17,53 @@ brew install stgit
 | Task | Command |
 |------|---------|
 | Initialize | `stg init` |
-| Import patches | `stg import -s 8gcr-ee/patches/series` |
-| Apply to specific | `stg goto <patch>` |
+| Import patches | `stg import -S 8gcr-ee/patches/series` |
 | List stack | `stg series` |
+| Go to patch | `stg goto <patch-name>` |
 | Create new patch | `stg new <name> -m "message"` |
-| Update patch | `stg refresh` |
-| Export to files | `stg export -d 8gcr-ee/patches/ -n` |
+| Update current patch | `stg refresh` |
+| Apply remaining patches | `stg push -a` |
+| Export to files | `stg export -d 8gcr-ee/patches/` |
+| Rebuild patch from commit | `git cherry-pick --no-commit <hash>` then `stg new` + `stg refresh` |
+| Rebase onto source branch | `stg rebase <patch-source-branch>` |
+
+## Terminology
+
+- **Patch source branch** (e.g., `main`): stores patch files as the source of truth.
+- **Wip branch** (e.g., `wip/my-feature`): has patches applied for development. Temporary and local — never push or commit applied results.
 
 ## Workflows
 
-### Applying Patches to Fresh OSS Harbor
+### Applying Patches for Development
 
 ```bash
-# Checkout OSS Harbor at desired version
-git checkout v2.12.0
-
-# Initialize stgit
+git checkout main -b wip/applied
 stg init
+stg import -S 8gcr-ee/patches/series
+# Work on wip/applied branch - DO NOT push or commit result
+```
 
-# Import all patches
-stg import -s 8gcr-ee/patches/series
+### Fix a Failing Patch (Manual Apply)
+
+```bash
+# If stg import fails on a patch:
+# 1. Resolve the conflict
+git add <resolved-files>
+stg refresh
+# 2. Continue importing remaining patches
+stg import -S 8gcr-ee/patches/series  # continues from where it left off
 ```
 
 ### Making Changes to an Existing Patch
 
 ```bash
-# Go to the patch you want to modify
-stg goto 0003-hybrid-auth-multi-source
-
-# Make your changes to the code
-# ...
-
-# Update the patch with your changes
-stg refresh
-
-# Re-apply remaining patches
-stg push -a
-
-# Export updated patches
-stg export -d 8gcr-ee/patches/ -n
+stg goto 0002-ldap-admin-group-filter  # Jump to that patch
+# Make your changes...
+git add -A
+stg refresh                            # Updates the patch
+stg push -a                            # Re-apply remaining patches
+stg export -d 8gcr-ee/patches/         # Export updated patches
+# Then commit the updated patch files to main
 ```
 
 ### Creating a New Feature Patch
@@ -65,7 +73,7 @@ stg export -d 8gcr-ee/patches/ -n
 stg push -a
 
 # Create a new patch
-stg new 0013-my-feature -m "Add my feature"
+stg new 0013-my-feature -m "feat(scope): add my feature"
 
 # Make your changes
 # ...
@@ -73,11 +81,55 @@ stg new 0013-my-feature -m "Add my feature"
 # Update the patch
 stg refresh
 
-# Export patches
-stg export -d 8gcr-ee/patches/ -n
+# Export patches (series file is updated automatically)
+stg export -d 8gcr-ee/patches/
+```
 
-# Add to series file
-echo "0013-my-feature.patch" >> 8gcr-ee/patches/series
+### Export Patches After Changes
+
+```bash
+stg export -d 8gcr-ee/patches/
+git checkout main
+git add 8gcr-ee/patches/
+git commit -m "fix(patches): <description>"
+```
+
+### Rebuild a Patch via Cherry-Pick
+
+Use this workflow when:
+- A patch file is malformed (wrong format, corrupted, or fails to import)
+- You resolved merge conflicts in the wip branch and need to update the patch files in the patch source branch
+
+```bash
+# 1. Ensure you're on a wip branch with StGit initialized and prior patches applied
+stg series  # verify current stack state
+
+# 2. Cherry-pick the commit without committing (stages changes only)
+git cherry-pick --no-commit <commit-hash>
+
+# 3. Resolve any conflicts if they occur
+git status                    # check for conflicts
+# ... resolve conflicts ...
+git add <resolved-files>
+
+# 4. Create a new StGit patch from the staged changes
+stg new <patch-name> -m "feat(scope): description"
+stg refresh
+
+# 5. Continue with remaining patches if any
+stg import <next-patch>       # or stg push if already in stack
+
+# 6. Export all patches to the patch source branch
+stg export -d 8gcr-ee/patches/
+
+# 7. Commit updated patches in the patch source branch
+cd <patch-source-worktree>
+git add 8gcr-ee/patches/
+git commit -m "fix(patches): rebuild <patch-name> with conflict resolution"
+
+# 8. Rebase wip branch onto updated patch source branch
+cd <wip-worktree>
+stg rebase <patch-source-branch>
 ```
 
 ### Rebasing Patches to New OSS Version
@@ -87,7 +139,7 @@ echo "0013-my-feature.patch" >> 8gcr-ee/patches/series
 stg pop -a
 
 # Rebase to new version
-git rebase v2.13.0
+stg rebase v2.14.0
 
 # Re-apply patches, fixing conflicts
 stg push -a
@@ -98,7 +150,7 @@ stg push -a
 #   4. stg push (continue)
 
 # Export updated patches
-stg export -d 8gcr-ee/patches/ -n
+stg export -d 8gcr-ee/patches/
 ```
 
 ## File Structure
@@ -108,8 +160,8 @@ stg export -d 8gcr-ee/patches/ -n
 └── patches/
     ├── series                    # Patch ordering (stgit format)
     ├── README.md                 # This file
-    ├── 0001-cr-init-build-setup.patch
-    ├── 0002-ldap-admin-group-filter.patch
+    ├── 0001-branding
+    ├── 0002-ldap-admin-group-filter
     └── ...
 ```
 
@@ -124,16 +176,17 @@ The `series` file lists patches in application order:
 ## Patch Naming Convention
 
 ```
-NNNN-short-description.patch
+NNNN-short-description
 ```
 
 - `NNNN`: 4-digit sequence number (0001, 0002, etc.)
 - `short-description`: Kebab-case description of the feature
+- No `.patch` file extension (StGit export matches names directly)
 
 ## Tips
 
 - Keep patches focused on a single feature
-- Schema migrations (0012) should always be last in series
 - Use `stg series -d` to see patch descriptions
 - Use `stg show` to view the current patch diff
 - Use `stg log` to see patch history
+- Use `stg refresh --force` if the index is dirty from a `cherry-pick --no-commit`

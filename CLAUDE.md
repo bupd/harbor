@@ -709,16 +709,6 @@ stg import -S 8gcr-ee/patches/series
 # Work on wip/applied branch - DO NOT push or commit result
 ```
 
-**Fix a failing patch (manual apply):**
-```bash
-# If stg import fails on a patch:
-# 1. Resolve the conflict
-git add <resolved-files>
-stg refresh
-# 2. Continue importing remaining patches
-stg import -S 8gcr-ee/patches/series  # continues from where it left off
-```
-
 **Update a specific patch:**
 ```bash
 stg goto 0002-ldap-admin-group-filter  # Jump to that patch
@@ -735,47 +725,7 @@ stg export -d 8gcr-ee/patches/         # Export updated patches
 stg export -d 8gcr-ee/patches/
 git checkout main
 git add 8gcr-ee/patches/
-git commit -m "Update patches: <description>"
-```
-
-**Rebuild a patch via cherry-pick:**
-
-Use this workflow when:
-- A patch file is malformed (wrong format, corrupted, or fails to import)
-- You resolved merge conflicts in the wip branch and need to update the patch files in the patch source branch
-
-The **patch source branch** (e.g., `main`) stores patch files as the source of truth. The **wip branch** (e.g., `wip/my-feature`) has patches applied for development.
-
-```bash
-# 1. Ensure you're on a wip branch with StGit initialized and prior patches applied
-stg series  # verify current stack state
-
-# 2. Cherry-pick the commit without committing (stages changes only)
-git cherry-pick --no-commit <commit-hash>
-
-# 3. Resolve any conflicts if they occur
-git status                    # check for conflicts
-# ... resolve conflicts ...
-git add <resolved-files>
-
-# 4. Create a new StGit patch from the staged changes
-stg new <patch-name> -m "feat(scope): description"
-stg refresh
-
-# 5. Continue with remaining patches if any
-stg import <next-patch>       # or stg push if already in stack
-
-# 6. Export all patches to the patch source branch
-stg export -d 8gcr-ee/patches/
-
-# 7. Commit updated patches in the patch source branch
-cd <patch-source-worktree>
-git add 8gcr-ee/patches/
-git commit -m "fix(patches): rebuild <patch-name> with conflict resolution"
-
-# 8. Rebase wip branch onto updated patch source branch
-cd <wip-worktree>
-stg rebase <patch-source-branch>
+git commit -m "fix(patches): <description>"
 ```
 
 ### StGit Quick Reference
@@ -792,7 +742,7 @@ stg rebase <patch-source-branch>
 | Rebuild patch from commit | `git cherry-pick --no-commit <hash>` then `stg new` + `stg refresh` |
 | Rebase onto source branch | `stg rebase <patch-source-branch>` |
 
-See `8gcr-ee/decision-records/0001-managing-8gcr-modifications-on-harbor.md` for full details.
+For detailed workflows (cherry-pick rebuild, rebasing to new OSS versions, conflict resolution), see `8gcr-ee/patches/README.md`.
 
 ## 13. Important Notes
 
