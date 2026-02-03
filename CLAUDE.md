@@ -676,7 +676,82 @@ Packages in `src/pkg/` provide:
 - RBAC system with project-level and system-level permissions
 - Token-based authentication for API access
 
-## 12. Important Notes
+## 12. 8gcr Enterprise Edition Patch Management
+
+This repository is a fork of Harbor with 8gcr enterprise modifications managed as a **patch queue**. Patches are the source of truth - never commit applied patch results.
+
+### Key Principles
+
+- **Patches are artifacts, branches are workspaces**: Patch files in `8gcr-ee/patches/` are checked into git. Working branches (`wip/*`) are temporary and local.
+- **Never commit applied patches**: Only commit changes to the patch files themselves, not the result of applying them.
+- **Use StGit**: All patch operations use StGit (`brew install stgit`).
+
+### Directory Structure
+
+```
+8gcr-ee/
+├── patches/
+│   ├── series                    # Patch order (stgit format)
+│   ├── 0001-sign-in-page-branding.patch
+│   ├── 0002-ldap-admin-group-filter.patch
+│   └── 0003-hybrid-auth-multi-source.patch
+└── decision-records/             # ADRs for 8gcr decisions
+```
+
+### Common Workflows
+
+**Apply patches for development:**
+```bash
+git checkout main -b wip/applied
+stg init
+stg import -s 8gcr-ee/patches/series
+# Work on wip/applied branch - DO NOT push or commit result
+```
+
+**Fix a failing patch (manual apply):**
+```bash
+# If stg import fails on a patch:
+# 1. Resolve the conflict
+git add <resolved-files>
+stg refresh
+# 2. Continue importing remaining patches
+stg import -s 8gcr-ee/patches/series  # continues from where it left off
+```
+
+**Update a specific patch:**
+```bash
+stg goto 0002-ldap-admin-group-filter  # Jump to that patch
+# Make changes...
+git add -A
+stg refresh                            # Updates the patch
+stg push -a                            # Re-apply remaining patches
+stg export -d 8gcr-ee/patches/ -n      # Export updated patches
+# Then commit the updated patch files to main
+```
+
+**Export patches after changes:**
+```bash
+stg export -d 8gcr-ee/patches/ -n
+git checkout main
+git add 8gcr-ee/patches/
+git commit -m "Update patches: <description>"
+```
+
+### StGit Quick Reference
+
+| Task | Command |
+|------|---------|
+| Initialize | `stg init` |
+| Import patches | `stg import -s 8gcr-ee/patches/series` |
+| List stack | `stg series` |
+| Go to patch | `stg goto <patch-name>` |
+| Update current patch | `stg refresh` |
+| Apply remaining patches | `stg push -a` |
+| Export to files | `stg export -d 8gcr-ee/patches/ -n` |
+
+See `8gcr-ee/decision-records/0001-managing-8gcr-modifications-on-harbor.md` for full details.
+
+## 13. Important Notes
 
 - The main branch may be unstable - use releases for stable builds
 - Harbor requires Docker 20.10.10+ and docker-compose 1.18.0+
