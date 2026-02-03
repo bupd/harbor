@@ -1,0 +1,45 @@
+fix: allow negative serial numbers in x509 certificates
+
+From: Vadim Bauer <vb@container-registry.com>
+
+
+---
+ src/core/controllers/base.go |    2 ++
+ src/go.mod                   |    4 ++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/controllers/base.go b/src/core/controllers/base.go
+index d5d7c03069..448fd696de 100644
+--- a/src/core/controllers/base.go
++++ b/src/core/controllers/base.go
+@@ -75,6 +75,8 @@ func (cc *CommonController) Login() {
+ 	principal := cc.GetString("principal")
+ 	password := cc.GetString("password")
+ 	if redirectForOIDC(cc.Ctx.Request.Context(), principal) {
++		// more debug for login
++		log.Debugf("Redirect is true")
+ 		ep, err := config.ExtEndpoint()
+ 		if err != nil {
+ 			log.Errorf("Failed to get the external endpoint, error: %v", err)
+diff --git a/src/go.mod b/src/go.mod
+index 86e5ccb11a..a81e275e4f 100644
+--- a/src/go.mod
++++ b/src/go.mod
+@@ -2,6 +2,8 @@ module github.com/goharbor/harbor/src
+ 
+ go 1.24.6
+ 
++godebug x509negativeserial=1
++
+ require (
+ 	github.com/CloudNativeAI/model-spec v0.0.5
+ 	github.com/FZambia/sentinel v1.1.0
+@@ -206,8 +208,6 @@ require (
+ 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
+ )
+ 
+-require github.com/pkg/sftp v1.13.7
+-
+ replace (
+ 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
+ 	github.com/docker/distribution => github.com/distribution/distribution v2.8.2+incompatible

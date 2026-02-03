@@ -1,0 +1,48 @@
+feat(scheduler): randomise seconds when scheduling jobs
+
+From: Vadim Bauer <vb@container-registry.com>
+
+
+---
+ .claude/settings.local.json    |    6 +++++-
+ src/pkg/scheduler/scheduler.go |    3 +++
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/.claude/settings.local.json b/.claude/settings.local.json
+index 0cb0469b25..bd9bb0625d 100644
+--- a/.claude/settings.local.json
++++ b/.claude/settings.local.json
+@@ -94,7 +94,11 @@
+       "Bash(gofmt:*)",
+       "Bash(stg import:*)",
+       "Bash(wc:*)",
+-      "Bash(stg:*)"
++      "Bash(stg:*)",
++      "Bash(git checkout:*)",
++      "Bash(git branch:*)",
++      "Bash(git stash:*)",
++      "Bash(git cherry-pick:*)"
+     ]
+   },
+   "enableAllProjectMcpServers": true,
+diff --git a/src/pkg/scheduler/scheduler.go b/src/pkg/scheduler/scheduler.go
+index accdd82624..b38c2a5bb0 100644
+--- a/src/pkg/scheduler/scheduler.go
++++ b/src/pkg/scheduler/scheduler.go
+@@ -18,6 +18,8 @@ import (
+ 	"context"
+ 	"encoding/json"
+ 	"fmt"
++	"math/rand"
++	"strings"
+ 	"time"
+ 
+ 	"github.com/goharbor/harbor/src/common/utils"
+@@ -97,6 +99,7 @@ func (s *scheduler) Schedule(ctx context.Context, vendorType string, vendorID in
+ 	if len(vendorType) == 0 {
+ 		return 0, fmt.Errorf("empty vendor type")
+ 	}
++	cron = fmt.Sprintf("%d %s", rand.Intn(60), strings.Join(strings.Split(cron, " ")[1:], " "))
+ 	if _, err := utils.CronParser().Parse(cron); err != nil {
+ 		return 0, errors.New(nil).WithCode(errors.BadRequestCode).
+ 			WithMessagef("invalid cron %s: %v", cron, err)
