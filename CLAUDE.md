@@ -692,10 +692,10 @@ This repository is a fork of Harbor with 8gcr enterprise modifications managed a
 8gcr-ee/
 ├── patches/
 │   ├── series                    # Patch order (stgit format)
-│   ├── 0001-branding.patch
-│   ├── 0002-ldap-admin-group-filter.patch
-│   ├── 0003-hybrid-auth-multi-source.patch
-│   └── 0004-sftp-replication.patch
+│   ├── 0001-branding
+│   ├── 0002-ldap-admin-group-filter
+│   ├── 0003-hybrid-auth-multi
+│   └── 0004-sftp-replication
 └── decision-records/             # ADRs for 8gcr decisions
 ```
 
@@ -705,7 +705,7 @@ This repository is a fork of Harbor with 8gcr enterprise modifications managed a
 ```bash
 git checkout main -b wip/applied
 stg init
-stg import -s 8gcr-ee/patches/series
+stg import -S 8gcr-ee/patches/series
 # Work on wip/applied branch - DO NOT push or commit result
 ```
 
@@ -716,7 +716,7 @@ stg import -s 8gcr-ee/patches/series
 git add <resolved-files>
 stg refresh
 # 2. Continue importing remaining patches
-stg import -s 8gcr-ee/patches/series  # continues from where it left off
+stg import -S 8gcr-ee/patches/series  # continues from where it left off
 ```
 
 **Update a specific patch:**
@@ -726,13 +726,13 @@ stg goto 0002-ldap-admin-group-filter  # Jump to that patch
 git add -A
 stg refresh                            # Updates the patch
 stg push -a                            # Re-apply remaining patches
-stg export -d 8gcr-ee/patches/ -n      # Export updated patches
+stg export -d 8gcr-ee/patches/         # Export updated patches
 # Then commit the updated patch files to main
 ```
 
 **Export patches after changes:**
 ```bash
-stg export -d 8gcr-ee/patches/ -n
+stg export -d 8gcr-ee/patches/
 git checkout main
 git add 8gcr-ee/patches/
 git commit -m "Update patches: <description>"
@@ -766,9 +766,7 @@ stg refresh
 stg import <next-patch>       # or stg push if already in stack
 
 # 6. Export all patches to the patch source branch
-stg export -d 8gcr-ee/patches/ -n
-# Rename exported files to match naming convention if needed
-# Update series file with correct filenames
+stg export -d 8gcr-ee/patches/
 
 # 7. Commit updated patches in the patch source branch
 cd <patch-source-worktree>
@@ -785,12 +783,12 @@ stg rebase <patch-source-branch>
 | Task | Command |
 |------|---------|
 | Initialize | `stg init` |
-| Import patches | `stg import -s 8gcr-ee/patches/series` |
+| Import patches | `stg import -S 8gcr-ee/patches/series` |
 | List stack | `stg series` |
 | Go to patch | `stg goto <patch-name>` |
 | Update current patch | `stg refresh` |
 | Apply remaining patches | `stg push -a` |
-| Export to files | `stg export -d 8gcr-ee/patches/ -n` |
+| Export to files | `stg export -d 8gcr-ee/patches/` |
 | Rebuild patch from commit | `git cherry-pick --no-commit <hash>` then `stg new` + `stg refresh` |
 | Rebase onto source branch | `stg rebase <patch-source-branch>` |
 
