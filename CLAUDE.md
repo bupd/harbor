@@ -709,6 +709,25 @@ stg import -S 8gcr-ee/patches/series
 # Work on wip/applied branch - DO NOT push or commit result
 ```
 
+**Create a new feature patch:**
+```bash
+# Ensure all existing patches are applied
+stg push -a
+
+# Create a new patch (naming: NNNN-short-description, no .patch extension)
+stg new 0005-my-feature -m "feat(scope): add my feature"
+
+# Make your changes...
+git add -A
+stg refresh
+
+# Export and commit to patch source branch
+stg export -d 8gcr-ee/patches/
+git checkout main
+git add 8gcr-ee/patches/
+git commit -m "feat(patches): add my-feature patch"
+```
+
 **Update a specific patch:**
 ```bash
 stg goto 0002-ldap-admin-group-filter  # Jump to that patch
@@ -718,6 +737,16 @@ stg refresh                            # Updates the patch
 stg push -a                            # Re-apply remaining patches
 stg export -d 8gcr-ee/patches/         # Export updated patches
 # Then commit the updated patch files to main
+```
+
+**Fix a failing patch (conflict during import):**
+```bash
+# If stg import fails on a patch:
+# 1. Resolve the conflict
+git add <resolved-files>
+stg refresh
+# 2. Continue importing remaining patches
+stg import -S 8gcr-ee/patches/series  # continues from where it left off
 ```
 
 **Export patches after changes:**
@@ -736,11 +765,16 @@ git commit -m "fix(patches): <description>"
 | Import patches | `stg import -S 8gcr-ee/patches/series` |
 | List stack | `stg series` |
 | Go to patch | `stg goto <patch-name>` |
+| Create new patch | `stg new <name> -m "message"` |
 | Update current patch | `stg refresh` |
 | Apply remaining patches | `stg push -a` |
 | Export to files | `stg export -d 8gcr-ee/patches/` |
 | Rebuild patch from commit | `git cherry-pick --no-commit <hash>` then `stg new` + `stg refresh` |
 | Rebase onto source branch | `stg rebase <patch-source-branch>` |
+
+### Patch Naming Convention
+
+`NNNN-short-description` — 4-digit sequence number, kebab-case, no `.patch` extension (StGit export handles this).
 
 For detailed workflows (cherry-pick rebuild, rebasing to new OSS versions, conflict resolution), see `8gcr-ee/patches/README.md`.
 
