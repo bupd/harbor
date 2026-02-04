@@ -701,42 +701,59 @@ This repository is a fork of Harbor with 8gcr enterprise modifications managed a
 
 ### Common Workflows
 
+All workflows use **worktrees** — never `git checkout` to switch branches, as it breaks StGit state. The `8gcr-ee/patches/` directory must be committed on the parent branch (typically `main`).
+
 **Apply patches for development:**
 ```bash
-git checkout main -b wip/applied
+# Option A: wt
+wt switch --create wip/applied          # branches from default branch
+# If branching from a non-default branch that has 8gcr-ee/:
+# wt switch --create wip/applied --base=@
+
+# Option B: git worktree
+git worktree add ../harbor.wip-applied -b wip/applied main
+cd ../harbor.wip-applied
+
+# Then initialise StGit and import
 stg init
 stg import -S 8gcr-ee/patches/series
-# Work on wip/applied branch - DO NOT push or commit result
+# StGit creates commits on this branch as it applies patches — that is expected.
+# DO NOT manually commit changes to 8gcr-ee/patches/ on this branch.
 ```
 
 **Create a new feature patch:**
 ```bash
-# Ensure all existing patches are applied
-stg push -a
+# Ensure all existing patches are applied (exit code 2 = none unapplied, OK)
+stg push -a || true
 
-# Create a new patch (naming: NNNN-short-description, no .patch extension)
-stg new 0005-my-feature -m "feat(scope): add my feature"
+# Create a new patch (use next available NNNN sequence number)
+stg new NNNN-my-feature -m "feat(scope): my feature name"
 
-# Make your changes...
-git add -A
+# Make your changes, then stage ONLY the files you changed (never git add -A)
+git add src/path/to/changed-files
 stg refresh
 
-# Export and commit to patch source branch
-stg export -d 8gcr-ee/patches/
-git checkout main
-git add 8gcr-ee/patches/
-git commit -m "feat(patches): add my-feature patch"
+# Verify ALL patches are in the stack — stg export replaces the entire output dir
+stg series
+
+# Export directly to the parent branch worktree and commit there
+stg export -d <parent-worktree>/8gcr-ee/patches/
+git -C <parent-worktree> add 8gcr-ee/patches/
+git -C <parent-worktree> commit -m "feat(scope): add/update my-feature"
 ```
 
 **Update a specific patch:**
 ```bash
 stg goto 0002-ldap-admin-group-filter  # Jump to that patch
-# Make changes...
-git add -A
+# Make changes, then stage only changed files
+git add src/path/to/changed-files
 stg refresh                            # Updates the patch
 stg push -a                            # Re-apply remaining patches
-stg export -d 8gcr-ee/patches/         # Export updated patches
-# Then commit the updated patch files to main
+
+# Export to parent worktree
+stg export -d <parent-worktree>/8gcr-ee/patches/
+git -C <parent-worktree> add 8gcr-ee/patches/
+git -C <parent-worktree> commit -m "fix or feat(scope): update ldap-admin-group-filter"
 ```
 
 **Fix a failing patch (conflict during import):**
@@ -751,10 +768,11 @@ stg import -S 8gcr-ee/patches/series  # continues from where it left off
 
 **Export patches after changes:**
 ```bash
-stg export -d 8gcr-ee/patches/
-git checkout main
-git add 8gcr-ee/patches/
-git commit -m "fix(patches): <description>"
+# WARNING: stg export replaces the entire output directory.
+# ALL patches must be in the stack before exporting (verify with stg series).
+stg export -d <parent-worktree>/8gcr-ee/patches/
+git -C <parent-worktree> add 8gcr-ee/patches/
+git -C <parent-worktree> commit -m "fix(<scope>): <description>"
 ```
 
 ### StGit Quick Reference
