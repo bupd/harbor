@@ -13,7 +13,7 @@ From: Vadim Bauer <vb@container-registry.com>
  create mode 100644 src/pkg/reg/adapter/harborsatellite/adapter.go
 
 diff --git a/src/controller/replication/flow/stage.go b/src/controller/replication/flow/stage.go
-index 3778767b42..84c8977b80 100644
+index 3778767b4..84c8977b8 100644
 --- a/src/controller/replication/flow/stage.go
 +++ b/src/controller/replication/flow/stage.go
 @@ -73,7 +73,8 @@ func fetchResources(adapter adp.Adapter, policy *repctlmodel.Policy) ([]*model.R
@@ -93,7 +93,7 @@ index 3778767b42..84c8977b80 100644
  	return result, nil
  }
 diff --git a/src/jobservice/job/impl/replication/replication.go b/src/jobservice/job/impl/replication/replication.go
-index 7f44a70184..27a33c454e 100644
+index 7f44a7018..27a33c454 100644
 --- a/src/jobservice/job/impl/replication/replication.go
 +++ b/src/jobservice/job/impl/replication/replication.go
 @@ -41,6 +41,8 @@ import (
@@ -107,7 +107,7 @@ index 7f44a70184..27a33c454e 100644
  	// import jfrog adapter
 diff --git a/src/pkg/reg/adapter/harborsatellite/adapter.go b/src/pkg/reg/adapter/harborsatellite/adapter.go
 new file mode 100644
-index 0000000000..c7cbd232cc
+index 000000000..c7cbd232c
 --- /dev/null
 +++ b/src/pkg/reg/adapter/harborsatellite/adapter.go
 @@ -0,0 +1,253 @@
@@ -365,7 +365,7 @@ index 0000000000..c7cbd232cc
 +	}, nil
 +}
 diff --git a/src/pkg/reg/manager.go b/src/pkg/reg/manager.go
-index 44d4c55df8..714b73aee5 100644
+index a7a4a6596..6ebc4c6b7 100644
 --- a/src/pkg/reg/manager.go
 +++ b/src/pkg/reg/manager.go
 @@ -43,6 +43,8 @@ import (
@@ -378,7 +378,7 @@ index 44d4c55df8..714b73aee5 100644
  	_ "github.com/goharbor/harbor/src/pkg/reg/adapter/huawei"
  	// register the Jfrog Artifactory adapter
 diff --git a/src/pkg/reg/model/registry.go b/src/pkg/reg/model/registry.go
-index 9a5a5053fe..c06969f12e 100644
+index 35b96325c..a92df6838 100644
 --- a/src/pkg/reg/model/registry.go
 +++ b/src/pkg/reg/model/registry.go
 @@ -39,6 +39,7 @@ const (

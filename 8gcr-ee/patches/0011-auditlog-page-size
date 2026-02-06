@@ -4,11 +4,10 @@ From: Vadim Bauer <vb@container-registry.com>
 
 
 ---
- api/v2.0/swagger.yaml |   16 +++++++++++++---
- 1 file changed, 13 insertions(+), 3 deletions(-)
+ 0 files changed
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index 8025bfd159..ff228648a0 100644
+index 4d2405bdd..91775da09 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
 @@ -1765,7 +1765,7 @@ paths:
@@ -36,7 +35,7 @@ index 8025bfd159..ff228648a0 100644
    requestId:
      name: X-Request-Id
      description: An unique ID for the request
-@@ -7853,7 +7862,7 @@ definitions:
+@@ -7876,7 +7885,7 @@ definitions:
      properties:
        name:
          type: string
@@ -45,7 +44,7 @@ index 8025bfd159..ff228648a0 100644
        description:
          type: string
          description: The description of the robot
-@@ -7872,6 +7881,7 @@ definitions:
+@@ -7895,6 +7904,7 @@ definitions:
          description: The duration of the robot in days, duration must be either -1(Never) or a positive integer
        permissions:
          type: array
@@ -53,7 +52,7 @@ index 8025bfd159..ff228648a0 100644
          items:
            $ref: '#/definitions/RobotPermission'
    RobotCreated:
-@@ -9632,7 +9642,7 @@ definitions:
+@@ -9655,7 +9665,7 @@ definitions:
          description: The permission resoruce
        action:
          type: string

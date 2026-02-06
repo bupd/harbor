@@ -4,8 +4,6 @@ From: Vadim Bauer <vb@container-registry.com>
 
 
 ---
- api/v2.0/swagger.yaml                              |    8 +++++
- make/photon/prepare/utils/configs.py               |    4 +--
  src/common/const.go                                |    1 +
  src/common/utils/test/test.go                      |    1 +
  src/controller/ldap/controller_test.go             |    2 +
@@ -30,13 +28,13 @@ From: Vadim Bauer <vb@container-registry.com>
  src/portal/src/i18n/lang/tr-tr-lang.json           |    2 +
  src/portal/src/i18n/lang/zh-cn-lang.json           |    2 +
  src/portal/src/i18n/lang/zh-tw-lang.json           |    4 ++-
- 26 files changed, 118 insertions(+), 11 deletions(-)
+ 24 files changed, 108 insertions(+), 9 deletions(-)
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index 6821ed65ca..8025bfd159 100644
+index 7dfbfe00e..4d2405bdd 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
-@@ -8979,6 +8979,9 @@ definitions:
+@@ -9002,6 +9002,9 @@ definitions:
        ldap_group_search_filter:
          $ref: '#/definitions/StringConfigItem'
          description: The filter to search the ldap group
@@ -46,7 +44,7 @@ index 6821ed65ca..8025bfd159 100644
        ldap_group_search_scope:
          $ref: '#/definitions/IntegerConfigItem'
          description: The scope to search ldap group. ''0-LDAP_SCOPE_BASE, 1-LDAP_SCOPE_ONELEVEL, 2-LDAP_SCOPE_SUBTREE''
-@@ -9176,6 +9179,11 @@ definitions:
+@@ -9199,6 +9202,11 @@ definitions:
          description: The filter to search the ldap group
          x-omitempty: true
          x-isnullable: true
@@ -58,30 +56,8 @@ index 6821ed65ca..8025bfd159 100644
        ldap_group_search_scope:
          type: integer
          description: The scope to search ldap group. ''0-LDAP_SCOPE_BASE, 1-LDAP_SCOPE_ONELEVEL, 2-LDAP_SCOPE_SUBTREE''
-diff --git a/make/photon/prepare/utils/configs.py b/make/photon/prepare/utils/configs.py
-index d5b83b588f..b243f24bcb 100644
---- a/make/photon/prepare/utils/configs.py
-+++ b/make/photon/prepare/utils/configs.py
-@@ -308,7 +308,7 @@ def parse_yaml_config(config_file_path, with_trivy):
-     # for compatibility, user could configure the strong_ssl_ciphers either in https section or under internal_tls section,
-     # but it is more reasonable to configure it in https_config
-     if https_config:
--        config_dict['strong_ssl_ciphers'] = https_config.get('strong_ssl_ciphers') 
-+        config_dict['strong_ssl_ciphers'] = https_config.get('strong_ssl_ciphers')
-     else:
-         config_dict['strong_ssl_ciphers'] = False
- 
-@@ -463,7 +463,7 @@ def get_redis_configs(internal_redis=None, external_redis=None, with_trivy=True)
- 
-     if with_trivy:
-         configs['trivy_redis_url'] = get_redis_url(redis['trivy_db_index'], redis)
--    
-+
-     if 'tlsOptions' in redis and redis['tlsOptions'].get('enable'):
-         configs['redis_custom_tls_ca_path'] = redis['tlsOptions']['rootCA']
- 
 diff --git a/src/common/const.go b/src/common/const.go
-index fb61eb5e8e..13b740bdcd 100644
+index fb61eb5e8..13b740bdc 100644
 --- a/src/common/const.go
 +++ b/src/common/const.go
 @@ -78,6 +78,7 @@ const (
@@ -93,7 +69,7 @@ index fb61eb5e8e..13b740bdcd 100644
  	LDAPGroupSearchScope             = "ldap_group_search_scope"
  	TokenServiceURL                  = "token_service_url"
 diff --git a/src/common/utils/test/test.go b/src/common/utils/test/test.go
-index 06b52d011d..a6a007d78c 100644
+index 06b52d011..a6a007d78 100644
 --- a/src/common/utils/test/test.go
 +++ b/src/common/utils/test/test.go
 @@ -117,6 +117,7 @@ func GetUnitTestConfig() map[string]any {
@@ -105,7 +81,7 @@ index 06b52d011d..a6a007d78c 100644
  		common.LDAPGroupAttributeName: "cn",
  		common.LDAPGroupSearchScope:   2,
 diff --git a/src/controller/ldap/controller_test.go b/src/controller/ldap/controller_test.go
-index bb31098073..92907cf441 100644
+index bb3109807..92907cf44 100644
 --- a/src/controller/ldap/controller_test.go
 +++ b/src/controller/ldap/controller_test.go
 @@ -51,6 +51,7 @@ var defaultConfigWithVerifyCert = map[string]any{
@@ -125,7 +101,7 @@ index bb31098073..92907cf441 100644
  }
  
 diff --git a/src/core/auth/ldap/ldap_test.go b/src/core/auth/ldap/ldap_test.go
-index 00594c9a0f..8fff9019aa 100644
+index 00594c9a0..8fff9019a 100644
 --- a/src/core/auth/ldap/ldap_test.go
 +++ b/src/core/auth/ldap/ldap_test.go
 @@ -4,7 +4,7 @@
@@ -146,7 +122,7 @@ index 00594c9a0f..8fff9019aa 100644
  	common.LDAPGroupAttributeName: "cn",
  	common.LDAPGroupSearchScope:   2,
 diff --git a/src/lib/config/metadata/metadatalist.go b/src/lib/config/metadata/metadatalist.go
-index 2bafdc7d32..6fa0e682a9 100644
+index 2bafdc7d3..6fa0e682a 100644
 --- a/src/lib/config/metadata/metadatalist.go
 +++ b/src/lib/config/metadata/metadatalist.go
 @@ -87,6 +87,7 @@ var (
@@ -158,7 +134,7 @@ index 2bafdc7d32..6fa0e682a9 100644
  		{Name: common.LDAPScope, Scope: UserScope, Group: LdapBasicGroup, EnvKey: "LDAP_SCOPE", DefaultValue: "2", ItemType: &LdapScopeType{}, Editable: false, Description: `The scope to search ldap users,'0-LDAP_SCOPE_BASE, 1-LDAP_SCOPE_ONELEVEL, 2-LDAP_SCOPE_SUBTREE'`},
  		{Name: common.LDAPSearchDN, Scope: UserScope, Group: LdapBasicGroup, EnvKey: "LDAP_SEARCH_DN", DefaultValue: "", ItemType: &StringType{}, Editable: false, Description: `The DN of the user to do the search.`},
 diff --git a/src/lib/config/models/model.go b/src/lib/config/models/model.go
-index d913ad34e8..1d215d0dea 100644
+index d913ad34e..1d215d0de 100644
 --- a/src/lib/config/models/model.go
 +++ b/src/lib/config/models/model.go
 @@ -93,6 +93,7 @@ type GroupConf struct {
@@ -170,7 +146,7 @@ index d913ad34e8..1d215d0dea 100644
  	MembershipAttribute string `json:"ldap_group_membership_attribute,omitempty"`
  	AttachParallel      bool   `json:"ldap_group_attach_parallel,omitempty"`
 diff --git a/src/lib/config/userconfig.go b/src/lib/config/userconfig.go
-index 99f41658ef..5639e82185 100644
+index 99f41658e..5639e8218 100644
 --- a/src/lib/config/userconfig.go
 +++ b/src/lib/config/userconfig.go
 @@ -79,6 +79,7 @@ func LDAPGroupConf(ctx context.Context) (*cfgModels.GroupConf, error) {
@@ -182,7 +158,7 @@ index 99f41658ef..5639e82185 100644
  		MembershipAttribute: mgr.Get(ctx, common.LDAPGroupMembershipAttribute).GetString(),
  		AttachParallel:      mgr.Get(ctx, common.LDAPGroupAttachParallel).GetBool(),
 diff --git a/src/pkg/chart/testdata/harbor-schema1/templates/core/core-cm.yaml b/src/pkg/chart/testdata/harbor-schema1/templates/core/core-cm.yaml
-index 93cab01b4c..207de54e55 100644
+index 93cab01b4..207de54e5 100644
 --- a/src/pkg/chart/testdata/harbor-schema1/templates/core/core-cm.yaml
 +++ b/src/pkg/chart/testdata/harbor-schema1/templates/core/core-cm.yaml
 @@ -40,7 +40,7 @@ data:
@@ -206,7 +182,7 @@ index 93cab01b4c..207de54e55 100644
 \ No newline at end of file
 +  {{- end }}
 diff --git a/src/pkg/chart/testdata/harbor-schema2/templates/core/core-cm.yaml b/src/pkg/chart/testdata/harbor-schema2/templates/core/core-cm.yaml
-index 93cab01b4c..207de54e55 100644
+index 93cab01b4..207de54e5 100644
 --- a/src/pkg/chart/testdata/harbor-schema2/templates/core/core-cm.yaml
 +++ b/src/pkg/chart/testdata/harbor-schema2/templates/core/core-cm.yaml
 @@ -40,7 +40,7 @@ data:
@@ -230,7 +206,7 @@ index 93cab01b4c..207de54e55 100644
 \ No newline at end of file
 +  {{- end }}
 diff --git a/src/pkg/config/validate/ldapgroup.go b/src/pkg/config/validate/ldapgroup.go
-index b1dc852e44..af6cc3572d 100644
+index b1dc852e4..af6cc3572 100644
 --- a/src/pkg/config/validate/ldapgroup.go
 +++ b/src/pkg/config/validate/ldapgroup.go
 @@ -31,6 +31,7 @@ type LdapGroupValidateRule struct {
@@ -253,7 +229,7 @@ index b1dc852e44..af6cc3572d 100644
  		cfg.NameAttribute = val.(string)
  		updated = true
 diff --git a/src/pkg/ldap/ldap.go b/src/pkg/ldap/ldap.go
-index 5baf4e91ee..fd7fe7f8a1 100644
+index 5baf4e91e..fd7fe7f8a 100644
 --- a/src/pkg/ldap/ldap.go
 +++ b/src/pkg/ldap/ldap.go
 @@ -179,7 +179,30 @@ func (s *Session) SearchUser(username string) ([]model.User, error) {
@@ -296,7 +272,7 @@ index 5baf4e91ee..fd7fe7f8a1 100644
  		baseDN,
  		s.basicCfg.Scope,
 diff --git a/src/pkg/ldap/ldap_test.go b/src/pkg/ldap/ldap_test.go
-index 012b41cfe0..3826ac86ba 100644
+index 012b41cfe..3826ac86b 100644
 --- a/src/pkg/ldap/ldap_test.go
 +++ b/src/pkg/ldap/ldap_test.go
 @@ -42,6 +42,7 @@ var groupCfg = models.GroupConf{
@@ -373,7 +349,7 @@ index 012b41cfe0..3826ac86ba 100644
  		SearchScope:   2,
  	}
 diff --git a/src/portal/src/app/base/left-side-nav/config/auth/config-auth.component.html b/src/portal/src/app/base/left-side-nav/config/auth/config-auth.component.html
-index 851be83863..624baabbc8 100644
+index 851be8386..624baabbc 100644
 --- a/src/portal/src/app/base/left-side-nav/config/auth/config-auth.component.html
 +++ b/src/portal/src/app/base/left-side-nav/config/auth/config-auth.component.html
 @@ -342,6 +342,36 @@
@@ -414,7 +390,7 @@ index 851be83863..624baabbc8 100644
              <label for="ldapGroupFilter"
                  >{{ 'CONFIG.LDAP.LDAP_GROUP_FILTER' | translate }}
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.ts b/src/portal/src/app/base/left-side-nav/config/config.ts
-index 0761eb4843..ff39d46783 100644
+index 0761eb484..ff39d4678 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.ts
 +++ b/src/portal/src/app/base/left-side-nav/config/config.ts
 @@ -68,6 +68,7 @@ export class Configuration {
@@ -434,7 +410,7 @@ index 0761eb4843..ff39d46783 100644
          this.ldap_group_search_scope = new NumberValueItem(0, true);
          this.ldap_group_membership_attribute = new StringValueItem('', true);
 diff --git a/src/portal/src/app/base/left-side-nav/projects/projects.component.spec.ts b/src/portal/src/app/base/left-side-nav/projects/projects.component.spec.ts
-index 30918e7ec3..a6a9535725 100644
+index 30918e7ec..a6a953572 100644
 --- a/src/portal/src/app/base/left-side-nav/projects/projects.component.spec.ts
 +++ b/src/portal/src/app/base/left-side-nav/projects/projects.component.spec.ts
 @@ -119,6 +119,10 @@ describe('ProjectComponent', () => {
@@ -449,10 +425,10 @@ index 30918e7ec3..a6a9535725 100644
                      value: 2,
                      editable: true,
 diff --git a/src/portal/src/i18n/lang/de-de-lang.json b/src/portal/src/i18n/lang/de-de-lang.json
-index 3ca4463d3b..f5e0f8dbe7 100644
+index 427895771..0c10343f9 100644
 --- a/src/portal/src/i18n/lang/de-de-lang.json
 +++ b/src/portal/src/i18n/lang/de-de-lang.json
-@@ -822,6 +822,8 @@
+@@ -834,6 +834,8 @@
              "VERIFY_CERT": "LDAP Zertifikat prüfen. Box deaktivieren, falls der LDAP Server mit selbstsignierten Zertifikaten betrieben wird.",
              "LDAP_GROUP_BASE_DN": "LDAP Gruppen Base DN",
              "LDAP_GROUP_BASE_DN_INFO": "Der Base DN von dem Gruppen im LDAP/AD gesucht werden. Das Feld darf nicht leer sein, sofern eine LDAP Gruppen Funktion eingesetzt wird.",
@@ -462,10 +438,10 @@ index 3ca4463d3b..f5e0f8dbe7 100644
              "LDAP_GROUP_FILTER_INFO": "Der Filter für die Suche nach LDAP/AD Gruppen. Für OpenLDAP: objectclass=groupOfNames. Für Active Directory: objectclass=group. Dieses Feld darf nicht leer sein, wenn die Gruppenbezogenen LDAP-Features benötigt werden.",
              "LDAP_GROUP_GID": "LDAP Gruppen GID",
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index ee52b30086..e8489ac128 100644
+index 9a8e11cba..4e87edf02 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
-@@ -822,6 +822,8 @@
+@@ -834,6 +834,8 @@
              "VERIFY_CERT": "LDAP Verify Certificate",
              "LDAP_GROUP_BASE_DN": "LDAP Group Base DN",
              "LDAP_GROUP_BASE_DN_INFO": "The base DN from which to look up a group in LDAP/AD. This field cannot be empty if you need to enable the LDAP group related feature.",
@@ -475,10 +451,10 @@ index ee52b30086..e8489ac128 100644
              "LDAP_GROUP_FILTER_INFO": "The filter to search for LDAP/AD groups. For OpenLDAP: objectclass=groupOfNames. For Active Directory: objectclass=group. This field cannot be empty if you need the LDAP group-related feature.",
              "LDAP_GROUP_GID": "LDAP Group GID",
 diff --git a/src/portal/src/i18n/lang/es-es-lang.json b/src/portal/src/i18n/lang/es-es-lang.json
-index 4034bfd18b..ad1ed12423 100644
+index 91c358c3c..c02d37587 100644
 --- a/src/portal/src/i18n/lang/es-es-lang.json
 +++ b/src/portal/src/i18n/lang/es-es-lang.json
-@@ -823,6 +823,8 @@
+@@ -837,6 +837,8 @@
              "VERIFY_CERT": "LDAP Verificar Cert",
              "LDAP_GROUP_BASE_DN": "LDAP Grupo Base DN",
              "LDAP_GROUP_BASE_DN_INFO": "El DN base desde el cual se buscará un grupo en LDAP/AD. Este campo no puede estar vacío si necesita habilitar la función relacionada con el grupo LDAP.",
@@ -488,10 +464,10 @@ index 4034bfd18b..ad1ed12423 100644
              "LDAP_GROUP_FILTER_INFO": "El filtro para buscar grupos LDAP/AD. Para OpenLDAP: objectclass=groupOfNames. Para Active Directory: objectclass=group. Este campo no puede estar vacío si necesita la función relacionada con el grupo LDAP.",
              "LDAP_GROUP_GID": "LDAP Grupo GID",
 diff --git a/src/portal/src/i18n/lang/fr-fr-lang.json b/src/portal/src/i18n/lang/fr-fr-lang.json
-index fd88b5b2e5..a8ccdf307f 100644
+index a195ff3ef..5c4c0d2c5 100644
 --- a/src/portal/src/i18n/lang/fr-fr-lang.json
 +++ b/src/portal/src/i18n/lang/fr-fr-lang.json
-@@ -822,6 +822,8 @@
+@@ -836,6 +836,8 @@
              "VERIFY_CERT": "Vérifier le certificat LDAP",
              "LDAP_GROUP_BASE_DN": "DN de base du groupe LDAP",
              "LDAP_GROUP_BASE_DN_INFO": "Le DN de base à partir duquel rechercher un groupe dans l'annuaire LDAP/AD. Ce champ ne peut pas être vide si vous devez activer la fonctionnalité liée aux groupes LDAP.",
@@ -501,10 +477,10 @@ index fd88b5b2e5..a8ccdf307f 100644
              "LDAP_GROUP_FILTER_INFO": "Filtre de recherche de groupe LDAP/AD. Pour OpenLDAP : objectclass=groupOfNames. Pour Active Directory : objectclass=group. Ce champ ne peut pas être vide si vous avez besoin de la fonctionnalité liée aux groupes LDAP.",
              "LDAP_GROUP_GID": "GID du groupe LDAP",
 diff --git a/src/portal/src/i18n/lang/ko-kr-lang.json b/src/portal/src/i18n/lang/ko-kr-lang.json
-index 55bff3f842..cac0a6d87d 100644
+index e8cb2b278..42bf3b079 100644
 --- a/src/portal/src/i18n/lang/ko-kr-lang.json
 +++ b/src/portal/src/i18n/lang/ko-kr-lang.json
-@@ -821,6 +821,8 @@
+@@ -834,6 +834,8 @@
              "VERIFY_CERT": "LDAP 확인 인증서",
              "LDAP_GROUP_BASE_DN": "LDAP Group Base DN",
              "LDAP_GROUP_BASE_DN_INFO": "LDAP/AD에서 그룹을 조회할 기본 DN입니다. LDAP 그룹 관련 기능을 활성화해야 하는 경우 이 필드를 비워둘 수 없습니다.",
@@ -514,10 +490,10 @@ index 55bff3f842..cac0a6d87d 100644
              "LDAP_GROUP_FILTER_INFO": "LDAP/AD 그룹을 검색하기 위한 필터입니다. OpenLDAP의 경우: objectclass=groupOfNames. Active Directory의 경우: objectclass=group. LDAP 그룹 관련 기능이 필요한 경우 이 필드를 비워둘 수 없습니다.",
              "LDAP_GROUP_GID": "LDAP Group GID",
 diff --git a/src/portal/src/i18n/lang/pt-br-lang.json b/src/portal/src/i18n/lang/pt-br-lang.json
-index adef3ab665..5c8a3193a2 100644
+index 21f23a6fe..e7ae1af3d 100644
 --- a/src/portal/src/i18n/lang/pt-br-lang.json
 +++ b/src/portal/src/i18n/lang/pt-br-lang.json
-@@ -825,6 +825,8 @@
+@@ -837,6 +837,8 @@
              "VERIFY_CERT": "Verificar certificado LDAP",
              "LDAP_GROUP_BASE_DN": "DN Base de busca de Grupos LDAP",
              "LDAP_GROUP_BASE_DN_INFO": "O DN base de onde buscar grupos no LDAP/AD. This field cannot be empty if you need to enable the LDAP group related feature.",
@@ -527,10 +503,10 @@ index adef3ab665..5c8a3193a2 100644
              "LDAP_GROUP_FILTER_INFO": "The filter to search for LDAP/AD groups. For OpenLDAP: objectclass=groupOfNames. For Active Directory: objectclass=group. This field cannot be empty if you need the LDAP group-related feature.",
              "LDAP_GROUP_GID": "GID de Grupo LDAP",
 diff --git a/src/portal/src/i18n/lang/tr-tr-lang.json b/src/portal/src/i18n/lang/tr-tr-lang.json
-index 335ee3ebd7..532b377721 100644
+index 7ef019335..2e944fe84 100644
 --- a/src/portal/src/i18n/lang/tr-tr-lang.json
 +++ b/src/portal/src/i18n/lang/tr-tr-lang.json
-@@ -823,6 +823,8 @@
+@@ -835,6 +835,8 @@
              "VERIFY_CERT": "LDAP Doğrulama Sertifikası",
              "LDAP_GROUP_BASE_DN": "LDAP Grup Tabanı DN",
              "LDAP_GROUP_BASE_DN_INFO": "LDAP / AD'de bir grubun aranacağı temel DN. This field cannot be empty if you need to enable the LDAP group related feature.",
@@ -540,10 +516,10 @@ index 335ee3ebd7..532b377721 100644
              "LDAP_GROUP_FILTER_INFO": "The filter to search for LDAP/AD groups. For OpenLDAP: objectclass=groupOfNames. For Active Directory: objectclass=group. This field cannot be empty if you need the LDAP group-related feature.",
              "LDAP_GROUP_GID": "LDAP Grup GID",
 diff --git a/src/portal/src/i18n/lang/zh-cn-lang.json b/src/portal/src/i18n/lang/zh-cn-lang.json
-index 84a0463e22..cee99f135d 100644
+index 100e56e67..7eaf91c66 100644
 --- a/src/portal/src/i18n/lang/zh-cn-lang.json
 +++ b/src/portal/src/i18n/lang/zh-cn-lang.json
-@@ -822,6 +822,8 @@
+@@ -836,6 +836,8 @@
              "VERIFY_CERT": "LDAP检查证书",
              "LDAP_GROUP_BASE_DN": "LDAP组基础DN",
              "LDAP_GROUP_BASE_DN_INFO": "LDAP/AD中，用于查找组的基础DN。如果要开启LDAP组功能，则此项必填",
@@ -553,10 +529,10 @@ index 84a0463e22..cee99f135d 100644
              "LDAP_GROUP_FILTER_INFO": "搜索LDAP组的过滤器. 对于 OpenLDAP，请将值设为: objectclass=groupOfNames. 对于 Active Directory，请将值设为: objectclass=group。如果要开启LDAP组功能，则此项必填",
              "LDAP_GROUP_GID": "LDAP组ID属性",
 diff --git a/src/portal/src/i18n/lang/zh-tw-lang.json b/src/portal/src/i18n/lang/zh-tw-lang.json
-index d90620c9a2..16c6937f25 100644
+index 85663bcc2..05069da73 100644
 --- a/src/portal/src/i18n/lang/zh-tw-lang.json
 +++ b/src/portal/src/i18n/lang/zh-tw-lang.json
-@@ -822,7 +822,9 @@
+@@ -836,7 +836,9 @@
              "SCOPE": "LDAP 範圍",
              "VERIFY_CERT": "LDAP 驗證憑證",
              "LDAP_GROUP_BASE_DN": "LDAP 群組基礎 DN",

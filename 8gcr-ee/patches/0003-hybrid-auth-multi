@@ -13,10 +13,10 @@ Signed-off-by: bupd <bupdprasanth@gmail.com>
  2 files changed, 14 insertions(+), 2 deletions(-)
 
 diff --git a/src/controller/user/controller.go b/src/controller/user/controller.go
-index b7d71a12aa..e5a0c08ea0 100644
+index 33f24b95d..e515915d9 100644
 --- a/src/controller/user/controller.go
 +++ b/src/controller/user/controller.go
-@@ -161,7 +161,8 @@ func (c *controller) Get(ctx context.Context, id int, opt *Option) (*commonmodel
+@@ -163,7 +163,8 @@ func (c *controller) Get(ctx context.Context, id int, opt *Option) (*commonmodel
  	if ok && lsc.User() != nil && lsc.User().UserID == id {
  		u.AdminRoleInAuth = lsc.User().AdminRoleInAuth
  	}
@@ -27,7 +27,7 @@ index b7d71a12aa..e5a0c08ea0 100644
  		if err != nil {
  			return nil, errors.UnknownError(err)
 diff --git a/src/core/auth/authenticator.go b/src/core/auth/authenticator.go
-index 7134edc69e..3efb5cbdb1 100644
+index 7134edc69..3efb5cbdb 100644
 --- a/src/core/auth/authenticator.go
 +++ b/src/core/auth/authenticator.go
 @@ -139,7 +139,7 @@ func Login(ctx context.Context, m models.AuthModel) (*models.User, error) {

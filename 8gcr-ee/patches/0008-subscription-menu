@@ -48,7 +48,7 @@ From: Vadim Bauer <vb@container-registry.com>
  create mode 100644 src/portal/src/setting-exoscale.json
 
 diff --git a/src/portal/angular.json b/src/portal/angular.json
-index 28f4d25557..262ddc5ab6 100644
+index f71759704..cff017cc0 100644
 --- a/src/portal/angular.json
 +++ b/src/portal/angular.json
 @@ -25,6 +25,13 @@
@@ -65,7 +65,7 @@ index 28f4d25557..262ddc5ab6 100644
                "src/i18n"
              ],
              "styles": [
-@@ -121,6 +128,10 @@
+@@ -120,6 +127,10 @@
                "src/images",
                "src/favicon.ico",
                "src/setting.json",
@@ -77,7 +77,7 @@ index 28f4d25557..262ddc5ab6 100644
              ]
            }
 diff --git a/src/portal/src/app/base/harbor-shell/harbor-shell.component.html b/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
-index efe2c8129b..af68e718ea 100644
+index efe2c8129..af68e718e 100644
 --- a/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
 +++ b/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
 @@ -162,6 +162,30 @@
@@ -117,7 +117,7 @@ index efe2c8129b..af68e718ea 100644
  <about-dialog></about-dialog>
 +<chargebee-dialog></chargebee-dialog>
 diff --git a/src/portal/src/app/base/harbor-shell/harbor-shell.component.ts b/src/portal/src/app/base/harbor-shell/harbor-shell.component.ts
-index 6ac0c6e4f7..93aa0aa081 100644
+index 6ac0c6e4f..93aa0aa08 100644
 --- a/src/portal/src/app/base/harbor-shell/harbor-shell.component.ts
 +++ b/src/portal/src/app/base/harbor-shell/harbor-shell.component.ts
 @@ -28,6 +28,7 @@ import { PasswordSettingComponent } from '../password-setting/password-setting.c
@@ -211,7 +211,7 @@ index 6ac0c6e4f7..93aa0aa081 100644
      openModal(event: ModalEvent): void {
          switch (event.modalName) {
 diff --git a/src/portal/src/app/services/skinable-config.service.ts b/src/portal/src/app/services/skinable-config.service.ts
-index 62c248d9db..fd630eec0d 100644
+index 62c248d9d..fd630eec0 100644
 --- a/src/portal/src/app/services/skinable-config.service.ts
 +++ b/src/portal/src/app/services/skinable-config.service.ts
 @@ -28,7 +28,7 @@ export class SkinableConfig {
@@ -224,7 +224,7 @@ index 62c248d9db..fd630eec0d 100644
                  map(
                      response => (this.customSkinData = response as CustomStyle)
 diff --git a/src/portal/src/app/services/theme.ts b/src/portal/src/app/services/theme.ts
-index 0116f2f350..ddfa1f6cc7 100644
+index 0116f2f35..ddfa1f6cc 100644
 --- a/src/portal/src/app/services/theme.ts
 +++ b/src/portal/src/app/services/theme.ts
 @@ -37,7 +37,11 @@ export interface CustomStyle {
@@ -242,7 +242,7 @@ index 0116f2f350..ddfa1f6cc7 100644
  export const THEME_ARRAY: ThemeInterface[] = [
 diff --git a/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.html b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.html
 new file mode 100644
-index 0000000000..86d7e04396
+index 000000000..86d7e0439
 --- /dev/null
 +++ b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.html
 @@ -0,0 +1,42 @@
@@ -290,7 +290,7 @@ index 0000000000..86d7e04396
 +</clr-modal>
 diff --git a/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.scss b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.scss
 new file mode 100644
-index 0000000000..94419d9445
+index 000000000..94419d944
 --- /dev/null
 +++ b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.scss
 @@ -0,0 +1,39 @@
@@ -336,7 +336,7 @@ index 0000000000..94419d9445
 \ No newline at end of file
 diff --git a/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.ts b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.ts
 new file mode 100644
-index 0000000000..74fc848f62
+index 000000000..74fc848f6
 --- /dev/null
 +++ b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.ts
 @@ -0,0 +1,167 @@
@@ -508,7 +508,7 @@ index 0000000000..74fc848f62
 +    }
 +}
 diff --git a/src/portal/src/app/shared/services/session.service.ts b/src/portal/src/app/shared/services/session.service.ts
-index 993d3ec2d5..b5724e5599 100644
+index 993d3ec2d..b5724e559 100644
 --- a/src/portal/src/app/shared/services/session.service.ts
 +++ b/src/portal/src/app/shared/services/session.service.ts
 @@ -14,13 +14,14 @@
@@ -582,7 +582,7 @@ index 993d3ec2d5..b5724e5599 100644
 +    }
  }
 diff --git a/src/portal/src/app/shared/shared.module.ts b/src/portal/src/app/shared/shared.module.ts
-index 75e175ba79..61e94112d0 100644
+index 75e175ba7..61e94112d 100644
 --- a/src/portal/src/app/shared/shared.module.ts
 +++ b/src/portal/src/app/shared/shared.module.ts
 @@ -31,6 +31,7 @@ import { NavigatorComponent } from './components/navigator/navigator.component';
@@ -610,7 +610,7 @@ index 75e175ba79..61e94112d0 100644
          GaugeComponent,
          ConfirmationDialogComponent,
 diff --git a/src/portal/src/app/shared/units/utils.ts b/src/portal/src/app/shared/units/utils.ts
-index 4bec0dba97..b96453dc7d 100644
+index 4bec0dba9..b96453dc7 100644
 --- a/src/portal/src/app/shared/units/utils.ts
 +++ b/src/portal/src/app/shared/units/utils.ts
 @@ -30,6 +30,7 @@ import {
@@ -640,7 +640,7 @@ index 4bec0dba97..b96453dc7d 100644
      headers: new HttpHeaders({
          'Content-Type': 'application/json',
 diff --git a/src/portal/src/environments/environment.prod.ts b/src/portal/src/environments/environment.prod.ts
-index 3e4e4d1e73..8cba047834 100644
+index 3e4e4d1e7..8cba04783 100644
 --- a/src/portal/src/environments/environment.prod.ts
 +++ b/src/portal/src/environments/environment.prod.ts
 @@ -14,4 +14,10 @@
@@ -655,7 +655,7 @@ index 3e4e4d1e73..8cba047834 100644
 +    exoscaleMarketplaceUrl: "https://portal.exoscale.com/marketplace/container-registry"
  };
 diff --git a/src/portal/src/environments/environment.ts b/src/portal/src/environments/environment.ts
-index 7e933b0daa..1efe336202 100644
+index 7e933b0da..1efe33620 100644
 --- a/src/portal/src/environments/environment.ts
 +++ b/src/portal/src/environments/environment.ts
 @@ -19,4 +19,10 @@
@@ -670,7 +670,7 @@ index 7e933b0daa..1efe336202 100644
 +    exoscaleMarketplaceUrl: "https://portal.exoscale.com/marketplace/container-registry"
  };
 diff --git a/src/portal/src/i18n/lang/de-de-lang.json b/src/portal/src/i18n/lang/de-de-lang.json
-index d8b2a9e7cb..5e81ad034d 100644
+index 2152397e8..b194526da 100644
 --- a/src/portal/src/i18n/lang/de-de-lang.json
 +++ b/src/portal/src/i18n/lang/de-de-lang.json
 @@ -174,7 +174,8 @@
@@ -684,7 +684,7 @@ index d8b2a9e7cb..5e81ad034d 100644
      "USER": {
          "ADD_ACTION": "Neuer Nutzer",
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index 6727cdc37c..09bc10df52 100644
+index 9d2c485fa..3348fba7f 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
 @@ -174,7 +174,8 @@
@@ -698,7 +698,7 @@ index 6727cdc37c..09bc10df52 100644
      "USER": {
          "ADD_ACTION": "New User",
 diff --git a/src/portal/src/i18n/lang/es-es-lang.json b/src/portal/src/i18n/lang/es-es-lang.json
-index d26fcaf5b1..09edd8da7b 100644
+index fc0c209f9..bb785b3d8 100644
 --- a/src/portal/src/i18n/lang/es-es-lang.json
 +++ b/src/portal/src/i18n/lang/es-es-lang.json
 @@ -174,7 +174,8 @@
@@ -712,7 +712,7 @@ index d26fcaf5b1..09edd8da7b 100644
      "USER": {
          "ADD_ACTION": "Nuevo Usuario",
 diff --git a/src/portal/src/i18n/lang/fr-fr-lang.json b/src/portal/src/i18n/lang/fr-fr-lang.json
-index 5921f71dab..6fe59174af 100644
+index f36f7cf52..3324e527b 100644
 --- a/src/portal/src/i18n/lang/fr-fr-lang.json
 +++ b/src/portal/src/i18n/lang/fr-fr-lang.json
 @@ -174,7 +174,8 @@
@@ -726,7 +726,7 @@ index 5921f71dab..6fe59174af 100644
      "USER": {
          "ADD_ACTION": "Nouvel utilisateur",
 diff --git a/src/portal/src/i18n/lang/ko-kr-lang.json b/src/portal/src/i18n/lang/ko-kr-lang.json
-index 9873d77609..117fa151c2 100644
+index 02bab9c53..1b152893e 100644
 --- a/src/portal/src/i18n/lang/ko-kr-lang.json
 +++ b/src/portal/src/i18n/lang/ko-kr-lang.json
 @@ -174,7 +174,8 @@
@@ -740,10 +740,10 @@ index 9873d77609..117fa151c2 100644
      "USER": {
          "ADD_ACTION": "새 사용자",
 diff --git a/src/portal/src/i18n/lang/pt-br-lang.json b/src/portal/src/i18n/lang/pt-br-lang.json
-index c933222622..b89e5ee68b 100644
+index ba686c3a5..bcd80713a 100644
 --- a/src/portal/src/i18n/lang/pt-br-lang.json
 +++ b/src/portal/src/i18n/lang/pt-br-lang.json
-@@ -173,7 +173,8 @@
+@@ -174,7 +174,8 @@
          "DISTRIBUTIONS": {
              "NAME": "Distribuições",
              "INSTANCES": "Repositórios remotos para distribuição"
@@ -754,7 +754,7 @@ index c933222622..b89e5ee68b 100644
      "USER": {
          "ADD_ACTION": "Novo Usuário",
 diff --git a/src/portal/src/i18n/lang/tr-tr-lang.json b/src/portal/src/i18n/lang/tr-tr-lang.json
-index d5004a7b10..201aa7d3ab 100644
+index ab4917bfb..3f5bba6d1 100644
 --- a/src/portal/src/i18n/lang/tr-tr-lang.json
 +++ b/src/portal/src/i18n/lang/tr-tr-lang.json
 @@ -175,7 +175,8 @@
@@ -768,10 +768,10 @@ index d5004a7b10..201aa7d3ab 100644
      "USER": {
          "ADD_ACTION": "Yeni Kullanıcı",
 diff --git a/src/portal/src/i18n/lang/zh-cn-lang.json b/src/portal/src/i18n/lang/zh-cn-lang.json
-index e877c16bce..522413378c 100644
+index f08ae34d3..14b89ecc1 100644
 --- a/src/portal/src/i18n/lang/zh-cn-lang.json
 +++ b/src/portal/src/i18n/lang/zh-cn-lang.json
-@@ -173,7 +173,8 @@
+@@ -174,7 +174,8 @@
          "DISTRIBUTIONS": {
              "NAME": "分布式分发",
              "INSTANCES": "实例"
@@ -782,7 +782,7 @@ index e877c16bce..522413378c 100644
      "USER": {
          "ADD_ACTION": "创建用户",
 diff --git a/src/portal/src/i18n/lang/zh-tw-lang.json b/src/portal/src/i18n/lang/zh-tw-lang.json
-index f51de8fb7e..d4e4c9def8 100644
+index dd9369090..6a17eb4fa 100644
 --- a/src/portal/src/i18n/lang/zh-tw-lang.json
 +++ b/src/portal/src/i18n/lang/zh-tw-lang.json
 @@ -3,7 +3,8 @@
@@ -797,7 +797,7 @@ index f51de8fb7e..d4e4c9def8 100644
          "REMEMBER": "記住我",
 diff --git a/src/portal/src/images/advantest-logo.svg b/src/portal/src/images/advantest-logo.svg
 new file mode 100644
-index 0000000000..d645b18dce
+index 000000000..d645b18dc
 --- /dev/null
 +++ b/src/portal/src/images/advantest-logo.svg
 @@ -0,0 +1,19 @@
@@ -822,7 +822,7 @@ index 0000000000..d645b18dce
 +</svg>
 diff --git a/src/portal/src/images/container-registry-logo.svg b/src/portal/src/images/container-registry-logo.svg
 new file mode 100644
-index 0000000000..fee4f28c3e
+index 000000000..fee4f28c3
 --- /dev/null
 +++ b/src/portal/src/images/container-registry-logo.svg
 @@ -0,0 +1,7 @@
@@ -835,7 +835,7 @@ index 0000000000..fee4f28c3e
 +</svg>
 diff --git a/src/portal/src/setting-advantest.json b/src/portal/src/setting-advantest.json
 new file mode 100644
-index 0000000000..4955d08ca9
+index 000000000..4955d08ca
 --- /dev/null
 +++ b/src/portal/src/setting-advantest.json
 @@ -0,0 +1,13 @@
@@ -854,7 +854,7 @@ index 0000000000..4955d08ca9
 +}
 diff --git a/src/portal/src/setting-aws.json b/src/portal/src/setting-aws.json
 new file mode 100644
-index 0000000000..cbbb37a4dc
+index 000000000..cbbb37a4d
 --- /dev/null
 +++ b/src/portal/src/setting-aws.json
 @@ -0,0 +1,14 @@
@@ -874,7 +874,7 @@ index 0000000000..cbbb37a4dc
 +}
 diff --git a/src/portal/src/setting-c8n.json b/src/portal/src/setting-c8n.json
 new file mode 100644
-index 0000000000..6585d9e5bf
+index 000000000..6585d9e5b
 --- /dev/null
 +++ b/src/portal/src/setting-c8n.json
 @@ -0,0 +1,15 @@
@@ -895,7 +895,7 @@ index 0000000000..6585d9e5bf
 +}
 diff --git a/src/portal/src/setting-chargebee.json b/src/portal/src/setting-chargebee.json
 new file mode 100644
-index 0000000000..c87f8134e4
+index 000000000..c87f8134e
 --- /dev/null
 +++ b/src/portal/src/setting-chargebee.json
 @@ -0,0 +1,15 @@
@@ -916,7 +916,7 @@ index 0000000000..c87f8134e4
 +}
 diff --git a/src/portal/src/setting-container-registry.json b/src/portal/src/setting-container-registry.json
 new file mode 100644
-index 0000000000..58116265f3
+index 000000000..58116265f
 --- /dev/null
 +++ b/src/portal/src/setting-container-registry.json
 @@ -0,0 +1,13 @@
@@ -935,7 +935,7 @@ index 0000000000..58116265f3
 +}
 diff --git a/src/portal/src/setting-exoscale.json b/src/portal/src/setting-exoscale.json
 new file mode 100644
-index 0000000000..0280a80600
+index 000000000..0280a8060
 --- /dev/null
 +++ b/src/portal/src/setting-exoscale.json
 @@ -0,0 +1,14 @@

@@ -9,7 +9,7 @@ container-registry.com instead of the Harbor GitHub repository.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.html b/src/portal/src/app/account/sign-in/sign-in.component.html
-index 5108d43164..29a25e286e 100644
+index 5108d4316..29a25e286 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.html
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.html
 @@ -178,7 +178,7 @@
