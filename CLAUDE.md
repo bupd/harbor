@@ -123,6 +123,7 @@ For detailed instructions, see [QUICKSTART.md](QUICKSTART.md).
 - **API Changes**: All changes to the REST API *must* be reflected in `api/v2.0/swagger.yaml`. Use `task build:gen-apis` to regenerate the server code after making changes.
 - **Database Migrations**: Database schema changes require a new migration file in `make/migrations/postgresql/`.
 - **Code Style**: Follow the existing code style. Use `task test:lint` to run linters and formatters.
+- **Logging**: Always use Harbor's structured logger (`github.com/goharbor/harbor/src/lib/log`), never Go's standard `log` package. The structured logger produces consistent output with timestamps, levels, and source locations (e.g. `2026-02-06T12:18:16Z [INFO] [/app/src/jobservice/main.go:59]: message`). It works with its default configuration before any explicit initialization, so it is safe to use in early startup code. Use `log.Infof`, `log.Warningf`, `log.Errorf`, `log.Debugf` — not `log.Printf` or `fmt.Printf`.
 
 ## 5. Architecture & Patterns
 
