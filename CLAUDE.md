@@ -685,6 +685,127 @@ Packages in `src/pkg/` provide:
 - Token-based authentication for API access
 
 ## 12. Important Notes
+## 12. 8gcr Enterprise Edition Patch Management
+
+This repository is a fork of Harbor with 8gcr enterprise modifications managed as a **patch queue**. Patches are the source of truth - never commit applied patch results.
+
+### Key Principles
+
+- **Patches are artifacts, branches are workspaces**: Patch files in `8gcr-ee/patches/` are checked into git. Working branches (`wip/*`) are temporary and local.
+- **Never commit applied patches**: Only commit changes to the patch files themselves, not the result of applying them.
+- **Use StGit**: All patch operations use StGit (`brew install stgit`).
+
+### Directory Structure
+
+```
+8gcr-ee/
+├── patches/
+│   ├── series                    # Patch order (stgit format)
+│   ├── 0001-branding
+│   ├── 0002-ldap-admin-group-filter
+│   ├── 0003-hybrid-auth-multi
+│   └── 0004-sftp-replication
+└── decision-records/             # ADRs for 8gcr decisions
+```
+
+### Common Workflows
+
+All workflows use **worktrees** — never `git checkout` to switch branches, as it breaks StGit state. The `8gcr-ee/patches/` directory must be committed on the parent branch (typically `main`).
+
+**Apply patches for development:**
+```bash
+# Option A: wt
+wt switch --create wip/applied          # branches from default branch
+# If branching from a non-default branch that has 8gcr-ee/:
+# wt switch --create wip/applied --base=@
+
+# Option B: git worktree
+git worktree add ../harbor.wip-applied -b wip/applied main
+cd ../harbor.wip-applied
+
+# Then initialise StGit and import
+stg init
+stg import -S 8gcr-ee/patches/series
+# StGit creates commits on this branch as it applies patches — that is expected.
+# DO NOT manually commit changes to 8gcr-ee/patches/ on this branch.
+```
+
+**Create a new feature patch:**
+```bash
+# Ensure all existing patches are applied (exit code 2 = none unapplied, OK)
+stg push -a || true
+
+# Create a new patch (use next available NNNN sequence number)
+stg new NNNN-my-feature -m "feat(scope): my feature name"
+
+# Make your changes, then stage ONLY the files you changed (never git add -A)
+git add src/path/to/changed-files
+stg refresh
+
+# Verify ALL patches are in the stack — stg export replaces the entire output dir
+stg series
+
+# Export directly to the parent branch worktree and commit there
+stg export -d <parent-worktree>/8gcr-ee/patches/
+git -C <parent-worktree> add 8gcr-ee/patches/
+git -C <parent-worktree> commit -m "feat(scope): add/update my-feature"
+```
+
+**Update a specific patch:**
+```bash
+stg goto 0002-ldap-admin-group-filter  # Jump to that patch
+# Make changes, then stage only changed files
+git add src/path/to/changed-files
+stg refresh                            # Updates the patch
+stg push -a                            # Re-apply remaining patches
+
+# Export to parent worktree
+stg export -d <parent-worktree>/8gcr-ee/patches/
+git -C <parent-worktree> add 8gcr-ee/patches/
+git -C <parent-worktree> commit -m "fix or feat(scope): update ldap-admin-group-filter"
+```
+
+**Fix a failing patch (conflict during import):**
+```bash
+# If stg import fails on a patch:
+# 1. Resolve the conflict
+git add <resolved-files>
+stg refresh
+# 2. Continue importing remaining patches
+stg import -S 8gcr-ee/patches/series  # continues from where it left off
+```
+
+**Export patches after changes:**
+```bash
+# WARNING: stg export replaces the entire output directory.
+# ALL patches must be in the stack before exporting (verify with stg series).
+stg export -d <parent-worktree>/8gcr-ee/patches/
+git -C <parent-worktree> add 8gcr-ee/patches/
+git -C <parent-worktree> commit -m "fix(<scope>): <description>"
+```
+
+### StGit Quick Reference
+
+| Task | Command |
+|------|---------|
+| Initialize | `stg init` |
+| Import patches | `stg import -S 8gcr-ee/patches/series` |
+| List stack | `stg series` |
+| Go to patch | `stg goto <patch-name>` |
+| Create new patch | `stg new <name> -m "message"` |
+| Update current patch | `stg refresh` |
+| Apply remaining patches | `stg push -a` |
+| Export to files | `stg export -d 8gcr-ee/patches/` |
+| Rebuild patch from commit | `git cherry-pick --no-commit <hash>` then `stg new` + `stg refresh` |
+| Rebase onto source branch | `stg rebase <patch-source-branch>` |
+
+### Patch Naming Convention
+
+`NNNN-short-description` — 4-digit sequence number, kebab-case, no `.patch` extension (StGit export handles this).
+
+For detailed workflows (cherry-pick rebuild, rebasing to new OSS versions, conflict resolution), see `8gcr-ee/patches/README.md`.
+
+## 13. Important Notes
 
 - The main branch may be unstable - use releases for stable builds
 - Harbor requires Docker 20.10.10+ and docker-compose 1.18.0+

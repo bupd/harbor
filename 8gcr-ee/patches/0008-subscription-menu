@@ -1,0 +1,955 @@
+feat(portal): add subscription in menu
+
+From: Vadim Bauer <vb@container-registry.com>
+
+
+---
+ src/portal/angular.json                            |   11 +
+ .../base/harbor-shell/harbor-shell.component.html  |   25 +++
+ .../base/harbor-shell/harbor-shell.component.ts    |   37 ++++
+ .../src/app/services/skinable-config.service.ts    |    2 
+ src/portal/src/app/services/theme.ts               |    6 +
+ .../chargebee-dialog.component.html                |   42 +++++
+ .../chargebee-dialog.component.scss                |   39 +++++
+ .../chargebee-dialog/chargebee-dialog.component.ts |  167 ++++++++++++++++++++
+ .../src/app/shared/services/session.service.ts     |   45 +++++
+ src/portal/src/app/shared/shared.module.ts         |    3 
+ src/portal/src/app/shared/units/utils.ts           |   12 +
+ src/portal/src/environments/environment.prod.ts    |    6 +
+ src/portal/src/environments/environment.ts         |    6 +
+ src/portal/src/i18n/lang/de-de-lang.json           |    3 
+ src/portal/src/i18n/lang/en-us-lang.json           |    3 
+ src/portal/src/i18n/lang/es-es-lang.json           |    3 
+ src/portal/src/i18n/lang/fr-fr-lang.json           |    3 
+ src/portal/src/i18n/lang/ko-kr-lang.json           |    3 
+ src/portal/src/i18n/lang/pt-br-lang.json           |    3 
+ src/portal/src/i18n/lang/tr-tr-lang.json           |    3 
+ src/portal/src/i18n/lang/zh-cn-lang.json           |    3 
+ src/portal/src/i18n/lang/zh-tw-lang.json           |    3 
+ src/portal/src/images/advantest-logo.svg           |   19 ++
+ src/portal/src/images/container-registry-logo.svg  |    7 +
+ src/portal/src/setting-advantest.json              |   13 ++
+ src/portal/src/setting-aws.json                    |   14 ++
+ src/portal/src/setting-c8n.json                    |   15 ++
+ src/portal/src/setting-chargebee.json              |   15 ++
+ src/portal/src/setting-container-registry.json     |   13 ++
+ src/portal/src/setting-exoscale.json               |   14 ++
+ 30 files changed, 525 insertions(+), 13 deletions(-)
+ create mode 100644 src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.html
+ create mode 100644 src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.scss
+ create mode 100644 src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.ts
+ create mode 100644 src/portal/src/images/advantest-logo.svg
+ create mode 100644 src/portal/src/images/container-registry-logo.svg
+ create mode 100644 src/portal/src/setting-advantest.json
+ create mode 100644 src/portal/src/setting-aws.json
+ create mode 100644 src/portal/src/setting-c8n.json
+ create mode 100644 src/portal/src/setting-chargebee.json
+ create mode 100644 src/portal/src/setting-container-registry.json
+ create mode 100644 src/portal/src/setting-exoscale.json
+
+diff --git a/src/portal/angular.json b/src/portal/angular.json
+index 28f4d25557..262ddc5ab6 100644
+--- a/src/portal/angular.json
++++ b/src/portal/angular.json
+@@ -25,6 +25,13 @@
+               "src/images",
+               "src/favicon.ico",
+               "src/setting.json",
++              "src/setting-aws.json",
++              "src/setting-advantest.json",
++              "src/setting-c8n.json",
++              "src/setting-chargebee.json",
++              "src/setting-container-registry.json",
++              "src/setting-exoscale.json",
++              "src/setting-marketplace.json",
+               "src/i18n"
+             ],
+             "styles": [
+@@ -121,6 +128,10 @@
+               "src/images",
+               "src/favicon.ico",
+               "src/setting.json",
++              "src/setting-advantest.json",
++              "src/setting-c8n.json",
++              "src/setting-container-registry.json",
++              "src/setting-marketplace.json",
+               "src/i18n"
+             ]
+           }
+diff --git a/src/portal/src/app/base/harbor-shell/harbor-shell.component.html b/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
+index efe2c8129b..af68e718ea 100644
+--- a/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
++++ b/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
+@@ -162,6 +162,30 @@
+                 </clr-vertical-nav-group>
+             </div>
+             <div class="mb-1">
++                <a
++                    *ngIf="showSubscriptionPortalOption()"
++                    clrVerticalNavLink
++                    routerLinkActive="active"
++                    href="javascript:void(0)"
++                    class="nav-link nav-text nav-about-link"
++                    (click)="openChargebeeDialog()">
++                    <clr-icon
++                        shape="store"
++			            clrVerticalNavIcon></clr-icon>
++                        Subscription
++                </a>
++                <a
++                    *ngIf="showMarketplaceLink()"
++                    clrVerticalNavLink
++                    routerLinkActive="active"
++                    [href]="marketplaceLink()"
++                    target="_blank"
++                    class="nav-link nav-text nav-about-link">
++                    <clr-icon
++                        shape="store"
++                        clrVerticalNavIcon></clr-icon>
++                        Subscription
++                </a>
+                 <ng-container *ngFor="let theme of themeArray; let i = index">
+                     <ng-container *ngIf="theme.showStyle === styleMode">
+                         <a
+@@ -205,3 +229,4 @@
+ <password-setting></password-setting>
+ <global-confirmation-dialog></global-confirmation-dialog>
+ <about-dialog></about-dialog>
++<chargebee-dialog></chargebee-dialog>
+diff --git a/src/portal/src/app/base/harbor-shell/harbor-shell.component.ts b/src/portal/src/app/base/harbor-shell/harbor-shell.component.ts
+index 6ac0c6e4f7..93aa0aa081 100644
+--- a/src/portal/src/app/base/harbor-shell/harbor-shell.component.ts
++++ b/src/portal/src/app/base/harbor-shell/harbor-shell.component.ts
+@@ -28,6 +28,7 @@ import { PasswordSettingComponent } from '../password-setting/password-setting.c
+ import { NavigatorComponent } from '../../shared/components/navigator/navigator.component';
+ import { SessionService } from '../../shared/services/session.service';
+ import { AboutDialogComponent } from '../../shared/components/about-dialog/about-dialog.component';
++import { ChargebeeDialogComponent } from '../../shared/components/chargebee-dialog/chargebee-dialog.component';
+ import { SearchTriggerService } from '../../shared/components/global-search/search-trigger.service';
+ import {
+     CommonRoutes,
+@@ -38,10 +39,13 @@ import { clone } from '../../shared/units/utils';
+ import { ThemeService } from '../../services/theme.service';
+ import { AccountSettingsModalComponent } from '../account-settings/account-settings-modal.component';
+ import { PreferenceSettingsComponent } from '../preference-settings/preference-settings.component';
++import { SkinableConfig } from '../../services/skinable-config.service';
++import { CustomStyle } from '../../services/theme';
+ import {
+     EventService,
+     HarborEvent,
+ } from '../../services/event-service/event.service';
++import { environment } from '../../../environments/environment';
+ 
+ const HAS_STYLE_MODE: string = 'styleModeLocal';
+ 
+@@ -66,6 +70,9 @@ export class HarborShellComponent implements OnInit, OnDestroy {
+     @ViewChild(AboutDialogComponent)
+     aboutDialog: AboutDialogComponent;
+ 
++    @ViewChild(ChargebeeDialogComponent)
++    chargebeeDialog: ChargebeeDialogComponent;
++
+     // To indicator whwther or not the search results page is displayed
+     // We need to use this property to do some overriding work
+     isSearchResultsOpened: boolean = false;
+@@ -76,6 +83,7 @@ export class HarborShellComponent implements OnInit, OnDestroy {
+     styleMode = this.themeArray[0].showStyle;
+     @ViewChild('scrollDiv') scrollDiv: ElementRef;
+     scrollToPositionSub: Subscription;
++    deploymentConfig: CustomStyle;
+     constructor(
+         private route: ActivatedRoute,
+         private router: Router,
+@@ -84,7 +92,8 @@ export class HarborShellComponent implements OnInit, OnDestroy {
+         private appConfigService: AppConfigService,
+         public theme: ThemeService,
+         private event: EventService,
+-        private cd: ChangeDetectorRef
++        private cd: ChangeDetectorRef,
++        private skinableConfig: SkinableConfig,
+     ) {}
+ 
+     ngOnInit() {
+@@ -116,6 +125,7 @@ export class HarborShellComponent implements OnInit, OnDestroy {
+         if (localStorage) {
+             this.styleMode = localStorage.getItem(HAS_STYLE_MODE);
+         }
++        this.deploymentConfig = this.skinableConfig.getSkinConfig();
+     }
+     isDBAuth(): boolean {
+         if (this.appConfigService?.configurations?.auth_mode) {
+@@ -174,6 +184,31 @@ export class HarborShellComponent implements OnInit, OnDestroy {
+             this.session.getCurrentUser().has_admin_role
+         );
+     }
++
++    // Open about dialog
++    openChargebeeDialog(): void {
++        this.chargebeeDialog.open(this.deploymentConfig.showSubscriptionCheckoutOption);
++    }
++
++    showSubscriptionPortalOption(): boolean {
++        return this.deploymentConfig && this.deploymentConfig.showSubscriptionPortalOption;
++    }
++
++    showExoscaleMarketplaceLink(): boolean {
++        return this.deploymentConfig && this.deploymentConfig.showExoscaleMarketplaceLink;
++    }
++
++    showMarketplaceLink(): boolean {
++        return this.deploymentConfig && (this.deploymentConfig.showAwsMarketplaceLink || this.deploymentConfig.showExoscaleMarketplaceLink);
++    }
++
++    marketplaceLink(): string {
++        if (this.deploymentConfig.showAwsMarketplaceLink) {
++            return environment.awsMarketplaceUrl;
++        } else {
++            return environment.exoscaleMarketplaceUrl;
++        }
++    }
+     // Open modal dialog
+     openModal(event: ModalEvent): void {
+         switch (event.modalName) {
+diff --git a/src/portal/src/app/services/skinable-config.service.ts b/src/portal/src/app/services/skinable-config.service.ts
+index 62c248d9db..fd630eec0d 100644
+--- a/src/portal/src/app/services/skinable-config.service.ts
++++ b/src/portal/src/app/services/skinable-config.service.ts
+@@ -28,7 +28,7 @@ export class SkinableConfig {
+ 
+     public getCustomFile(): Observable<any> {
+         return this.http
+-            .get(`setting.json?buildTimeStamp=${environment?.buildTimestamp}`)
++            .get(`${environment.settingJson}?buildTimeStamp=${environment?.buildTimestamp}`)
+             .pipe(
+                 map(
+                     response => (this.customSkinData = response as CustomStyle)
+diff --git a/src/portal/src/app/services/theme.ts b/src/portal/src/app/services/theme.ts
+index 0116f2f350..ddfa1f6cc7 100644
+--- a/src/portal/src/app/services/theme.ts
++++ b/src/portal/src/app/services/theme.ts
+@@ -37,7 +37,11 @@ export interface CustomStyle {
+         name: string;
+         logo: string;
+         introduction: string;
+-    };
++    },
++    showSubscriptionPortalOption: boolean;
++    showSubscriptionCheckoutOption: boolean;
++    showExoscaleMarketplaceLink: boolean;
++    showAwsMarketplaceLink: boolean;
+ }
+ 
+ export const THEME_ARRAY: ThemeInterface[] = [
+diff --git a/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.html b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.html
+new file mode 100644
+index 0000000000..86d7e04396
+--- /dev/null
++++ b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.html
+@@ -0,0 +1,42 @@
++<clr-modal
++    class="chargebee-dialog-modal"
++    [(clrModalOpen)]="opened"
++    [clrModalSize]="size"
++    (clrModalOpenChange)="onModalOpenChange($event)">
++    <h3 class="modal-title">{{ title }}</h3>
++    <div class="modal-body" id="clrModalBody">
++        <h4 class="chargebee-dialog-subtitle" *ngIf="!isSubscribed">Subscribe to upgrade your storage to 100 GiB.</h4>
++        <div class="github-subscription" *ngIf="hasGithubApp && !isSubscribed">
++            Go to the <a href="https://github.com/marketplace/container-registry" target="_blank">Github marketplace</a> to add additional storage.
++        </div>
++        <div class="github-subscription" *ngIf="hasGithubApp && isSubscribed">
++            Go to the <a href="https://github.com/marketplace/container-registry" target="_blank">Github marketplace</a> to manage your subscription.
++        </div>
++        <h4 class="chargebee-dialog-subtitle" *ngIf="isSubscriptionSuccessful">You now have 100 GiB of storage. You can safely close this window.</h4>
++            <div class="plan-selector" *ngIf="!isSubscribed && !hasGithubApp">
++                <clr-select-container>
++                    <label>Subscription Billing Cycle</label>
++                    <select clrSelect [(ngModel)]="selectedPlan" (ngModelChange)="onPlanChange($event)">
++                        <option value="Yearly">{{ formatPrice(currency, 4.2) }}/month, with annual payment of {{ formatPrice(currency, 50) }}.</option>
++                        <option value="Monthly">{{ formatPrice(currency, 5) }}/month, with monthly payment.</option>
++                    </select>
++                </clr-select-container>
++                <p *ngIf="selectedPlan === 'Monthly'">
++		            The annual subscription saves you {{ formatPrice(currency, 10) }}.
++		        </p>
++            </div>
++            <div class="chargebeeFrame" *ngIf="!hasGithubApp">
++                <span class="spinner" *ngIf="!loaded">
++                    Loading...
++                </span>
++                <iframe
++                    id="chargebee"
++                    [src]="sanitizedFrameSrc"
++                    [style.width]="iframeWidth"
++                    [style.height]="iframeHeight"
++                    [style.display]="iframeDisplay"
++                    title="Container Registry Subscription">
++                </iframe>
++            </div>
++    </div>
++</clr-modal>
+diff --git a/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.scss b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.scss
+new file mode 100644
+index 0000000000..94419d9445
+--- /dev/null
++++ b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.scss
+@@ -0,0 +1,39 @@
++// #clrModalBody {
++//     min-height: 500px;
++// }
++
++.chargebee-dialog-modal {
++    min-height: 620px;
++}
++
++.chargebee-dialog-modal ::ng-deep .modal-dialog {
++    top: 10px;
++    position: absolute;
++}
++
++.chargebee-dialog-modal ::ng-deep .modal-body-wrapper {
++    overflow: hidden;
++    max-height: 100vh;
++}
++
++.plan-selector {
++    margin-bottom: 1rem;
++    text-align: left;
++}
++
++.row {
++    flex-grow: 6;
++}
++
++.chargebee-dialog-subtitle {
++    margin-top: 0.5rem;
++    margin-bottom: 0.5rem;
++}
++
++.chargebeeFrame {
++    min-width: 400px;
++    max-height: 600px;
++    display: flex;
++    justify-content: center;
++    align-items: center;
++}
+\ No newline at end of file
+diff --git a/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.ts b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.ts
+new file mode 100644
+index 0000000000..74fc848f62
+--- /dev/null
++++ b/src/portal/src/app/shared/components/chargebee-dialog/chargebee-dialog.component.ts
+@@ -0,0 +1,167 @@
++import { Component, OnInit, EventEmitter, Output, Renderer2, ElementRef } from "@angular/core";
++import { DomSanitizer, SafeResourceUrl } from "@angular/platform-browser";
++import { SessionService } from "../../services/session.service";
++import { SkinableConfig } from "../../../services/skinable-config.service";
++import { environment } from "../../../../environments/environment";
++
++const iframeDisplayHidden = "none";
++const iframeDisplayVisible = "";
++const defaultIframeWidth = "400px";
++const defaultIframeHeight = "550px";
++const checkout = `https://${environment.chargebeeUrl}.chargebee.com/hosted_pages/checkout?subscription_items[item_price_id][0]=SubscriptionName-Currency-PlanPeriod&subscription_items[quantity][0]=1&layout=full_page&subscription[cf_Project_Name]=projectName`
++const customerPortal = `https://${environment.chargebeeUrl}.chargebeeportal.com`
++
++@Component({
++    selector: "chargebee-dialog",
++    templateUrl: "./chargebee-dialog.component.html",
++    styleUrls: ["./chargebee-dialog.component.scss"]
++})
++export class ChargebeeDialogComponent implements OnInit {
++    opened = false;
++    loaded = false;
++    size = "full-screen";
++    iframeWidth = "0px";
++    iframeHeight = "0px";
++    iframeDisplay = iframeDisplayHidden;
++    iframeSrc: SafeResourceUrl = customerPortal;
++    sanitizedFrameSrc: SafeResourceUrl = this.sanitizer.bypassSecurityTrustResourceUrl(customerPortal);
++    currentUser = null;
++    subscriptionName = "c8n-subscription";
++    projectName = null;
++    isSubscribed = true;
++    selectedPlan: "Monthly" | "Yearly" = "Yearly";
++    currency = "EUR";
++    isSubscriptionSuccessful = false;
++    showSubscriptionCheckoutOption = true;
++    userLocation = null;
++    deploymentConfig = null;
++    subscriptionStatusMonitoring = null;
++    title = "Container Registry Subscription";
++    hasGithubApp = false;
++
++    @Output() frameEvent = new EventEmitter<any>();
++    constructor(
++        private renderer: Renderer2,
++        private el: ElementRef,
++        private session: SessionService,
++        private sanitizer: DomSanitizer,
++        private skinableConfig: SkinableConfig,
++    ) {}
++
++    ngOnInit(): void {
++        this.opened = false;
++        this.setupMessageListener();
++    }
++
++    formatPrice(currency, number, digits=2) {
++        return new Intl.NumberFormat("en-US", {
++            style: "currency",
++            currency,
++            maximumFractionDigits: digits,
++        }).format(number);
++    }
++
++    monitorSubscriptionStatus(): void {
++        this.session.getUserSubscriptionStatus(this.currentUser.email).subscribe(data => {
++            if (data != null) {
++                this.projectName = data.projectName;
++                // when a user just subscribed
++                if (!this.isSubscribed && data.subscribed) {
++                    this.isSubscriptionSuccessful = true;
++                    this.title = "Enjoy Your Container Registry!"
++                // while a user is doing subscribing process
++                } else {
++                    this.isSubscriptionSuccessful = false;
++                    this.title = "Container Registry Subscription";
++                }
++                this.isSubscribed = data.subscribed;
++                this.hasGithubApp = data.hasGithubApp;
++            }
++            var newIframeSrc = null;
++            // if a user is subscribe, only show portal
++            if (this.isSubscribed || this.hasGithubApp) {
++                this.stopSubscriptionStatusMonitoring();
++                newIframeSrc = customerPortal;
++            // else show checkout
++            } else {
++                newIframeSrc = this.getCheckoutSrc();
++            }
++            this.setIframe(newIframeSrc);
++        });
++    }
++    private setIframe(newIframeSrc: string): void {
++        if (newIframeSrc == this.iframeSrc) return;
++        this.iframeSrc = newIframeSrc;
++        this.sanitizedFrameSrc = this.sanitizer.bypassSecurityTrustResourceUrl(newIframeSrc);
++    }
++    private startSubscriptionStatusMonitoring(): void {
++        this.subscriptionStatusMonitoring = setInterval(() => {
++            this.monitorSubscriptionStatus();
++        }, 1000);
++    }
++
++    private stopSubscriptionStatusMonitoring(): void {
++        if (this.subscriptionStatusMonitoring) {
++            clearInterval(this.subscriptionStatusMonitoring);
++        }
++    }
++
++    open(showSubscriptionCheckoutOption: boolean): void {
++        this.opened = true;
++        this.showSubscriptionCheckoutOption = showSubscriptionCheckoutOption;
++        if (!this.showSubscriptionCheckoutOption) {
++            return;
++        }
++        if (this.userLocation == null) {
++            const location = this.session.getUserLocation().subscribe(data => {
++                this.userLocation = data;
++            });
++        }
++        this.currentUser = this.session.getCurrentUser();
++        this.startSubscriptionStatusMonitoring();
++    }
++
++    onModalOpenChange(opened: boolean) {
++        this.stopSubscriptionStatusMonitoring();
++        this.iframeDisplay = iframeDisplayHidden;
++        this.loaded = false;
++        this.isSubscribed = true;
++        this.isSubscriptionSuccessful = false;
++        this.selectedPlan = "Yearly";
++        this.title = "Container Registry Subscription";
++        this.iframeWidth = "0px";
++        this.iframeHeight = "0px";
++        this.hasGithubApp = false;
++    }
++
++    getCheckoutSrc() {
++        this.currency = this.userLocation.currency.toUpperCase();
++        return checkout
++                    .replace("PlanPeriod", this.selectedPlan)
++                    .replace("Currency", this.userLocation.currency.toUpperCase())
++                    .replace("projectName", this.projectName)
++                    .replace("SubscriptionName", this.subscriptionName);
++    }
++
++    onPlanChange(plan: "Monthly" | "Yearly"): void {
++        this.selectedPlan = plan;
++        if (!this.isSubscribed) {
++            this.setIframe(this.getCheckoutSrc());
++        }
++    }
++
++    private setupMessageListener(): void {
++        window.addEventListener("message", (event) => {
++            // Verify origin for security
++            if (event.data == "cb.loaded") {
++                this.loaded = true;
++                this.iframeDisplay = iframeDisplayVisible;
++                setTimeout(() => {
++                    this.iframeHeight = defaultIframeHeight;
++                    this.iframeWidth = defaultIframeWidth;
++                }, 500);
++
++            }
++        });
++    }
++}
+diff --git a/src/portal/src/app/shared/services/session.service.ts b/src/portal/src/app/shared/services/session.service.ts
+index 993d3ec2d5..b5724e5599 100644
+--- a/src/portal/src/app/shared/services/session.service.ts
++++ b/src/portal/src/app/shared/services/session.service.ts
+@@ -14,13 +14,14 @@
+ import { Injectable } from '@angular/core';
+ import { HttpClient, HttpParams } from '@angular/common/http';
+ import { map, catchError } from 'rxjs/operators';
+-import { Observable, throwError as observableThrowError } from 'rxjs';
++import { Observable, throwError as observableThrowError, of } from 'rxjs';
+ import { SessionUser, SessionUserBackend } from '../entities/session-user';
+ import { SessionViewmodelFactory } from './session.viewmodel.factory';
+ import {
+     HTTP_FORM_OPTIONS,
+     HTTP_GET_OPTIONS,
+     HTTP_JSON_OPTIONS,
++    HTTP_SUPABASE_HEADERS,
+     CURRENT_BASE_HREF,
+ } from '../units/utils';
+ import { FlushAll } from '../units/cache-util';
+@@ -28,6 +29,7 @@ import { SignInCredential } from '../../account/sign-in/sign-in-credential';
+ import { ProjectMemberEntity } from '../../../../ng-swagger-gen/models/project-member-entity';
+ import { DeFaultLang } from '../entities/shared.const';
+ import { JobServiceDashboardHealthCheckService } from '../../base/left-side-nav/job-service-dashboard/job-service-dashboard-health-check.service';
++import { environment } from 'src/environments/environment';
+ 
+ const signInUrl = '/c/login';
+ const currentUserEndpoint = CURRENT_BASE_HREF + '/users/current';
+@@ -210,4 +212,45 @@ export class SessionService {
+     getProjectMembers(): ProjectMemberEntity[] {
+         return this.projectMembers;
+     }
++
++    getUserSubscriptionStatus(email: string): Observable<any> {
++        const url = `${environment.supabaseProjectUrl}/rest/v1/rpc/get_c8n_subscription_row`;
++        return this.http
++            .post(url, {"user_email": email}, HTTP_SUPABASE_HEADERS)
++            .pipe(
++                map(data => {
++                    if (data == null) return null;
++                    const splitData = data.toString().split(",");
++                    return {
++                        "projectName": splitData[0],
++                        "email": splitData[1],
++                        "subscribed": splitData[2].toLowerCase() == "true",
++                        "hasGithubApp": splitData[3].toLowerCase() == "true"
++                    };
++                }),
++                catchError(error => this.handleError(error)));
++    }
++
++    getUserLocation(): Observable<{locale: string; currency: string;}> {
++        const getUserLocale = (userInfo) => {
++            try {
++                const languages = userInfo.languages.split(',');
++                const language =  languages[0];
++                const detectedCurrency = userInfo.currency.toUpperCase();
++                const supportedCurrency = (detectedCurrency=== "EUR" || detectedCurrency === "CHF") ? detectedCurrency : "USD";
++
++                const locale = language.indexOf('-') !== -1 ? language : language + "-" + userInfo.country
++                return { locale, currency: supportedCurrency };
++            } catch (error) {
++                return { locale: "de-DE", currency: "EUR"};
++            }
++        }
++        const url = 'https://ipapi.co/json';
++        return this.http.get(url).pipe(
++            map(data => {
++                return getUserLocale(data);
++            }),
++            catchError(() => of({ locale: "de-DE", currency: "EUR"}))
++        );
++    }
+ }
+diff --git a/src/portal/src/app/shared/shared.module.ts b/src/portal/src/app/shared/shared.module.ts
+index 75e175ba79..61e94112d0 100644
+--- a/src/portal/src/app/shared/shared.module.ts
++++ b/src/portal/src/app/shared/shared.module.ts
+@@ -31,6 +31,7 @@ import { NavigatorComponent } from './components/navigator/navigator.component';
+ import { SearchResultComponent } from './components/global-search/search-result.component';
+ import { GlobalSearchComponent } from './components/global-search/global-search.component';
+ import { AboutDialogComponent } from './components/about-dialog/about-dialog.component';
++import { ChargebeeDialogComponent } from './components/chargebee-dialog/chargebee-dialog.component';
+ import {
+     LabelDefaultService,
+     LabelService,
+@@ -175,6 +176,7 @@ ClarityIcons.add({
+         SearchResultComponent,
+         GlobalSearchComponent,
+         AboutDialogComponent,
++        ChargebeeDialogComponent,
+         FilterComponent,
+         GaugeComponent,
+         ConfirmationDialogComponent,
+@@ -220,6 +222,7 @@ ClarityIcons.add({
+         SearchResultComponent,
+         GlobalSearchComponent,
+         AboutDialogComponent,
++        ChargebeeDialogComponent,
+         FilterComponent,
+         GaugeComponent,
+         ConfirmationDialogComponent,
+diff --git a/src/portal/src/app/shared/units/utils.ts b/src/portal/src/app/shared/units/utils.ts
+index 4bec0dba97..b96453dc7d 100644
+--- a/src/portal/src/app/shared/units/utils.ts
++++ b/src/portal/src/app/shared/units/utils.ts
+@@ -30,6 +30,7 @@ import {
+ import { AbstractControl } from '@angular/forms';
+ import { isValidCron } from 'cron-validator';
+ import { ClrDatagridStateInterface } from '@clr/angular';
++import { environment } from 'src/environments/environment';
+ 
+ /**
+  * Api levels
+@@ -80,6 +81,17 @@ export const HTTP_JSON_OPTIONS: HttpOptionInterface = {
+     responseType: 'json',
+ };
+ 
++export const HTTP_SUPABASE_HEADERS: HttpOptionInterface = {
++    headers: new HttpHeaders({
++    'Content-Type': 'application/json',
++    Accept: 'application/json',
++    "apikey": environment.supabasePublishableKey,
++    "Authorization": `Bearer ${environment.supabasePublishableKey}`,
++    "Range": "0-9"
++    }),
++    responseType: 'json',
++};
++
+ export const HTTP_GET_OPTIONS: HttpOptionInterface = {
+     headers: new HttpHeaders({
+         'Content-Type': 'application/json',
+diff --git a/src/portal/src/environments/environment.prod.ts b/src/portal/src/environments/environment.prod.ts
+index 3e4e4d1e73..8cba047834 100644
+--- a/src/portal/src/environments/environment.prod.ts
++++ b/src/portal/src/environments/environment.prod.ts
+@@ -14,4 +14,10 @@
+ export const environment = {
+     production: true,
+     buildTimestamp: 0,
++    chargebeeUrl: "container-registry",
++    supabaseProjectUrl: "https://zuffjtvdneaetyuhuzdp.supabase.co",
++    supabasePublishableKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlhdCI6MTYyMDMxMTEyMCwiZXhwIjoxOTM1ODg3MTIwfQ.fqZ84TQWlRPlnYH7eS7MDQLLqcB6786Di-9MNO-NRXA",
++    settingJson: "setting.json",
++    awsMarketplaceUrl: "https://console.aws.amazon.com/marketplace",
++    exoscaleMarketplaceUrl: "https://portal.exoscale.com/marketplace/container-registry"
+ };
+diff --git a/src/portal/src/environments/environment.ts b/src/portal/src/environments/environment.ts
+index 7e933b0daa..1efe336202 100644
+--- a/src/portal/src/environments/environment.ts
++++ b/src/portal/src/environments/environment.ts
+@@ -19,4 +19,10 @@
+ export const environment = {
+     production: false,
+     buildTimestamp: 0,
++    chargebeeUrl: "container-registry-test",
++    supabaseProjectUrl: "https://zuffjtvdneaetyuhuzdp.supabase.co",
++    supabasePublishableKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlhdCI6MTYyMDMxMTEyMCwiZXhwIjoxOTM1ODg3MTIwfQ.fqZ84TQWlRPlnYH7eS7MDQLLqcB6786Di-9MNO-NRXA",
++    settingJson: "setting.json",
++    awsMarketplaceUrl: "https://console.aws.amazon.com/marketplace",
++    exoscaleMarketplaceUrl: "https://portal.exoscale.com/marketplace/container-registry"
+ };
+diff --git a/src/portal/src/i18n/lang/de-de-lang.json b/src/portal/src/i18n/lang/de-de-lang.json
+index d8b2a9e7cb..5e81ad034d 100644
+--- a/src/portal/src/i18n/lang/de-de-lang.json
++++ b/src/portal/src/i18n/lang/de-de-lang.json
+@@ -174,7 +174,8 @@
+         "DISTRIBUTIONS": {
+             "NAME": "P2P-Verteilung",
+             "INSTANCES": "Instanzen"
+-        }
++        },
++        "SUBSCRIPTION": "Subscription"
+     },
+     "USER": {
+         "ADD_ACTION": "Neuer Nutzer",
+diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
+index 6727cdc37c..09bc10df52 100644
+--- a/src/portal/src/i18n/lang/en-us-lang.json
++++ b/src/portal/src/i18n/lang/en-us-lang.json
+@@ -174,7 +174,8 @@
+         "DISTRIBUTIONS": {
+             "NAME": "Distributions",
+             "INSTANCES": "Instances"
+-        }
++        },
++        "SUBSCRIPTION": "Subscription"
+     },
+     "USER": {
+         "ADD_ACTION": "New User",
+diff --git a/src/portal/src/i18n/lang/es-es-lang.json b/src/portal/src/i18n/lang/es-es-lang.json
+index d26fcaf5b1..09edd8da7b 100644
+--- a/src/portal/src/i18n/lang/es-es-lang.json
++++ b/src/portal/src/i18n/lang/es-es-lang.json
+@@ -174,7 +174,8 @@
+         "DISTRIBUTIONS": {
+             "NAME": "Distribuciones",
+             "INSTANCES": "Instancias"
+-        }
++        },
++        "SUBSCRIPTION": "Subscription"
+     },
+     "USER": {
+         "ADD_ACTION": "Nuevo Usuario",
+diff --git a/src/portal/src/i18n/lang/fr-fr-lang.json b/src/portal/src/i18n/lang/fr-fr-lang.json
+index 5921f71dab..6fe59174af 100644
+--- a/src/portal/src/i18n/lang/fr-fr-lang.json
++++ b/src/portal/src/i18n/lang/fr-fr-lang.json
+@@ -174,7 +174,8 @@
+         "DISTRIBUTIONS": {
+             "NAME": "Distributions",
+             "INSTANCES": "Instances"
+-        }
++        },
++        "SUBSCRIPTION": "Subscription"
+     },
+     "USER": {
+         "ADD_ACTION": "Nouvel utilisateur",
+diff --git a/src/portal/src/i18n/lang/ko-kr-lang.json b/src/portal/src/i18n/lang/ko-kr-lang.json
+index 9873d77609..117fa151c2 100644
+--- a/src/portal/src/i18n/lang/ko-kr-lang.json
++++ b/src/portal/src/i18n/lang/ko-kr-lang.json
+@@ -174,7 +174,8 @@
+         "DISTRIBUTIONS": {
+             "NAME": "배포",
+             "INSTANCES": "인스턴스"
+-        }
++        },
++        "SUBSCRIPTION": "Subscription"
+     },
+     "USER": {
+         "ADD_ACTION": "새 사용자",
+diff --git a/src/portal/src/i18n/lang/pt-br-lang.json b/src/portal/src/i18n/lang/pt-br-lang.json
+index c933222622..b89e5ee68b 100644
+--- a/src/portal/src/i18n/lang/pt-br-lang.json
++++ b/src/portal/src/i18n/lang/pt-br-lang.json
+@@ -173,7 +173,8 @@
+         "DISTRIBUTIONS": {
+             "NAME": "Distribuições",
+             "INSTANCES": "Repositórios remotos para distribuição"
+-        }
++        },
++        "SUBSCRIPTION": "Subscription"
+     },
+     "USER": {
+         "ADD_ACTION": "Novo Usuário",
+diff --git a/src/portal/src/i18n/lang/tr-tr-lang.json b/src/portal/src/i18n/lang/tr-tr-lang.json
+index d5004a7b10..201aa7d3ab 100644
+--- a/src/portal/src/i18n/lang/tr-tr-lang.json
++++ b/src/portal/src/i18n/lang/tr-tr-lang.json
+@@ -175,7 +175,8 @@
+         "DISTRIBUTIONS": {
+             "NAME": "Distributions",
+             "INSTANCES": "Instances"
+-        }
++        },
++        "SUBSCRIPTION": "Subscription"
+     },
+     "USER": {
+         "ADD_ACTION": "Yeni Kullanıcı",
+diff --git a/src/portal/src/i18n/lang/zh-cn-lang.json b/src/portal/src/i18n/lang/zh-cn-lang.json
+index e877c16bce..522413378c 100644
+--- a/src/portal/src/i18n/lang/zh-cn-lang.json
++++ b/src/portal/src/i18n/lang/zh-cn-lang.json
+@@ -173,7 +173,8 @@
+         "DISTRIBUTIONS": {
+             "NAME": "分布式分发",
+             "INSTANCES": "实例"
+-        }
++        },
++        "SUBSCRIPTION": "Subscription"
+     },
+     "USER": {
+         "ADD_ACTION": "创建用户",
+diff --git a/src/portal/src/i18n/lang/zh-tw-lang.json b/src/portal/src/i18n/lang/zh-tw-lang.json
+index f51de8fb7e..d4e4c9def8 100644
+--- a/src/portal/src/i18n/lang/zh-tw-lang.json
++++ b/src/portal/src/i18n/lang/zh-tw-lang.json
+@@ -3,7 +3,8 @@
+         "VMW_HARBOR": "Harbor",
+         "HARBOR": "Harbor",
+         "THEME_DARK_TEXT": "深色主題",
+-        "THEME_LIGHT_TEXT": "淺色主題"
++        "THEME_LIGHT_TEXT": "淺色主題",
++        "SUBSCRIPTION": "Subscription"
+     },
+     "SIGN_IN": {
+         "REMEMBER": "記住我",
+diff --git a/src/portal/src/images/advantest-logo.svg b/src/portal/src/images/advantest-logo.svg
+new file mode 100644
+index 0000000000..d645b18dce
+--- /dev/null
++++ b/src/portal/src/images/advantest-logo.svg
+@@ -0,0 +1,19 @@
++<?xml version="1.0" standalone="no"?>
++<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 20010904//EN"
++ "http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd">
++<svg version="1.0" xmlns="http://www.w3.org/2000/svg"
++ width="512.000000pt" height="512.000000pt" viewBox="0 0 512.000000 512.000000"
++ preserveAspectRatio="xMidYMid meet">
++
++<g transform="translate(0.000000,512.000000) scale(0.100000,-0.100000)"
++fill="#FFF" stroke="none">
++<path d="M3175 4826 c-60 -19 -116 -50 -157 -88 -20 -18 -440 -634 -934 -1368
++-493 -734 -1147 -1706 -1452 -2159 -592 -880 -589 -875 -541 -920 l23 -21
++1326 2 1325 3 55 26 c31 14 72 40 92 58 20 18 131 168 246 334 381 550 369
++529 359 615 -4 34 -12 53 -32 69 l-26 23 -550 0 c-314 0 -549 4 -549 9 0 5 76
++121 168 257 93 137 390 578 661 979 272 402 500 737 507 745 12 12 14 -209 14
++-1490 l0 -1505 23 -40 c12 -22 40 -50 62 -62 l40 -23 570 3 570 2 33 23 c18
++13 41 41 52 62 20 39 20 67 20 2189 0 1498 -3 2158 -11 2178 -15 40 -48 73
++-94 94 -38 18 -84 19 -900 18 -666 0 -869 -3 -900 -13z"/>
++</g>
++</svg>
+diff --git a/src/portal/src/images/container-registry-logo.svg b/src/portal/src/images/container-registry-logo.svg
+new file mode 100644
+index 0000000000..fee4f28c3e
+--- /dev/null
++++ b/src/portal/src/images/container-registry-logo.svg
+@@ -0,0 +1,7 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="793.7" height="1122.52" viewBox="0 0 210 297">
++  <g fill="#d03808">
++    <path d="M93.71 155.34l-.06 1.5-10.9 6.3-1.27-2.17 10.9-6.3zM45.88 181.45l1.24 2.18 11.55-6.65-1.25-2.17zM64.02 171.1l1.27 2.18 10.87-6.31-1.24-2.18zM127.25 163.15l1.27-2.18-10.9-6.3-1.32.67.05 1.5zM151.34 176.98l1.24-2.17 11.55 6.64-1.25 2.18zM133.82 166.97l1.27-2.18 10.9 6.3-1.28 2.19z" class="st0"/>
++    <path d="M106.1 115.08h-2.51V102.5h2.52zM104.86 135.73l-1.27-.5v-12.6h2.52v12.6zM103.59 81.61h2.52v13.33h-2.52z" class="st1"/>
++  </g>
++  <path fill="#fff" d="M107.79 70.71l63.2 36.47 2.13 1.22.68.4v79.35l-.68.4-2.13 1.21-31.61 18.25-26.78 15.48-2.04 1.16v-12.87l.68-.4 22.53-13.01 22.56-13.02 6.26-3.6v-60.08l-52.03 30.01v72.97l-.68.4-2.12 1.21-2.12 1.22-.68.4-.68-.4-2.12-1.22-2.13-1.22-.68-.4v-72.96l-51.99-30.04v60.15l4.05 2.32 35.24 20.37 12.03 6.93.68.4v12.84l-2.04-1.16L70.54 208l-31.56-18.25-2.12-1.21-.65-.4v-79.33l.68-.4 2.12-1.21c21.06-12.17 42.15-24.33 63.2-36.47l2.13-1.22.68-.4.68.4zm-54.88 41.3L105 142.07l52.08-30.04-47.72-27.53-4.36-2.55-8.6 4.98-.6.34c-14.3 8.24-28.59 16.5-42.88 24.76z" class="st0" style="fill:#ffffff;fill-opacity:1"/>
++</svg>
+diff --git a/src/portal/src/setting-advantest.json b/src/portal/src/setting-advantest.json
+new file mode 100644
+index 0000000000..4955d08ca9
+--- /dev/null
++++ b/src/portal/src/setting-advantest.json
+@@ -0,0 +1,13 @@
++{
++  "headerBgColor": {
++    "darkMode": "",
++    "lightMode": ""
++  },
++  "loginBgImg": "",
++  "loginTitle": "Advantest Container Registry",
++  "product": {
++    "name": "Container Registry",
++    "logo": "advantest-logo.svg",
++    "introduction": "8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."
++  }
++}
+diff --git a/src/portal/src/setting-aws.json b/src/portal/src/setting-aws.json
+new file mode 100644
+index 0000000000..cbbb37a4dc
+--- /dev/null
++++ b/src/portal/src/setting-aws.json
+@@ -0,0 +1,14 @@
++{
++  "headerBgColor": {
++    "darkMode": "",
++    "lightMode": ""
++  },
++  "loginBgImg": "",
++  "loginTitle": "Container Registry",
++  "product": {
++    "name": "Container Registry",
++    "logo": "container-registry-logo.svg",
++    "introduction": "8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."
++  },
++  "showAwsMarketplaceLink": true
++}
+diff --git a/src/portal/src/setting-c8n.json b/src/portal/src/setting-c8n.json
+new file mode 100644
+index 0000000000..6585d9e5bf
+--- /dev/null
++++ b/src/portal/src/setting-c8n.json
+@@ -0,0 +1,15 @@
++{
++  "headerBgColor": {
++    "darkMode": "",
++    "lightMode": ""
++  },
++  "loginBgImg": "",
++  "loginTitle": "Container Registry",
++  "product": {
++    "name": "Container Registry",
++    "logo": "container-registry-logo.svg",
++    "introduction": "8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."
++  },
++  "showSubscriptionPortalOption": true,
++  "showSubscriptionCheckoutOption": true
++}
+diff --git a/src/portal/src/setting-chargebee.json b/src/portal/src/setting-chargebee.json
+new file mode 100644
+index 0000000000..c87f8134e4
+--- /dev/null
++++ b/src/portal/src/setting-chargebee.json
+@@ -0,0 +1,15 @@
++{
++  "headerBgColor": {
++    "darkMode": "",
++    "lightMode": ""
++  },
++  "loginBgImg": "",
++  "loginTitle": "Container Registry",
++  "product": {
++    "name": "Container Registry",
++    "logo": "container-registry-logo.svg",
++    "introduction": "8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."
++  },
++  "showSubscriptionPortalOption": true,
++  "showSubscriptionCheckoutOption": false
++}
+diff --git a/src/portal/src/setting-container-registry.json b/src/portal/src/setting-container-registry.json
+new file mode 100644
+index 0000000000..58116265f3
+--- /dev/null
++++ b/src/portal/src/setting-container-registry.json
+@@ -0,0 +1,13 @@
++{
++  "headerBgColor": {
++    "darkMode": "",
++    "lightMode": ""
++  },
++  "loginBgImg": "",
++  "loginTitle": "Container Registry",
++  "product": {
++    "name": "Container Registry",
++    "logo": "container-registry-logo.svg",
++    "introduction": "8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."
++  }
++}
+diff --git a/src/portal/src/setting-exoscale.json b/src/portal/src/setting-exoscale.json
+new file mode 100644
+index 0000000000..0280a80600
+--- /dev/null
++++ b/src/portal/src/setting-exoscale.json
+@@ -0,0 +1,14 @@
++{
++  "headerBgColor": {
++    "darkMode": "",
++    "lightMode": ""
++  },
++  "loginBgImg": "",
++  "loginTitle": "Container Registry",
++  "product": {
++    "name": "Container Registry",
++    "logo": "container-registry-logo.svg",
++    "introduction": "8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."
++  },
++  "showExoscaleMarketplaceLink": true
++}

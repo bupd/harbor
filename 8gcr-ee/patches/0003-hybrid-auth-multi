@@ -1,0 +1,59 @@
+[PATCH] feat(auth): add hybrid auth for OIDC + local users
+
+From: bupd <bupdprasanth@gmail.com>
+
+HybridAuth allows both OIDC and local admin authentication.
+Normally, when OIDC is enabled, only OIDC users can authenticate.
+Enabling HybridAuth permits local DB admin logins alongside OIDC.
+
+Signed-off-by: bupd <bupdprasanth@gmail.com>
+---
+ src/controller/user/controller.go |    3 ++-
+ src/core/auth/authenticator.go    |   13 ++++++++++++-
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/controller/user/controller.go b/src/controller/user/controller.go
+index b7d71a12aa..e5a0c08ea0 100644
+--- a/src/controller/user/controller.go
++++ b/src/controller/user/controller.go
+@@ -161,7 +161,8 @@ func (c *controller) Get(ctx context.Context, id int, opt *Option) (*commonmodel
+ 	if ok && lsc.User() != nil && lsc.User().UserID == id {
+ 		u.AdminRoleInAuth = lsc.User().AdminRoleInAuth
+ 	}
+-	if opt != nil && opt.WithOIDCInfo {
++	// check if comment is `admin user` to skip OIDCmeta for user
++	if opt != nil && opt.WithOIDCInfo && u.Comment != "admin user" {
+ 		oidcMeta, err := c.oidcMetaMgr.GetByUserID(ctx, id)
+ 		if err != nil {
+ 			return nil, errors.UnknownError(err)
+diff --git a/src/core/auth/authenticator.go b/src/core/auth/authenticator.go
+index 7134edc69e..3efb5cbdb1 100644
+--- a/src/core/auth/authenticator.go
++++ b/src/core/auth/authenticator.go
+@@ -139,7 +139,7 @@ func Login(ctx context.Context, m models.AuthModel) (*models.User, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if authMode == "" || IsSuperUser(ctx, m.Principal) {
++	if authMode == "" || IsDBUser(ctx, m.Principal) {
+ 		authMode = common.DBAuth
+ 	}
+ 	log.Debug("Current AUTH_MODE is ", authMode)
+@@ -255,6 +255,17 @@ func PostAuthenticate(ctx context.Context, u *models.User) error {
+ 	return helper.PostAuthenticate(ctx, u)
+ }
+ 
++// IsDBUser checks if the user is from DB of Harbor
++func IsDBUser(ctx context.Context, username string) bool {
++	u, err := user.Mgr.GetByName(ctx, username)
++	if err != nil {
++		// LDAP user can't be found before onboard to Harbor
++		log.Debugf("Failed to get user from DB, username: %s, error: %v", username, err)
++		return false
++	}
++	return u.UserID > 0
++}
++
+ // IsSuperUser checks if the user is super user(conventionally id == 1) of Harbor
+ func IsSuperUser(ctx context.Context, username string) bool {
+ 	u, err := user.Mgr.GetByName(ctx, username)
