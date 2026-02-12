@@ -20,7 +20,6 @@
       "Bash(docker system info:*)",
       "Bash(docker login:*)",
       "Bash(lsof:*)",
-      "WebFetch(domain:github.com)",
       "Bash(git rev-parse:*)",
       "Bash(grep:*)",
       "Bash(find:*)",
@@ -39,8 +38,6 @@
       "Bash(go test:*)",
       "Bash(make gen_apis:*)",
       "Bash(git checkout:*)",
-      "WebFetch(domain:quay.io)",
-      "WebFetch(domain:goswagger.io)",
       "Bash(echo:*)",
       "Bash(go version:*)",
       "Bash(gofmt:*)",
@@ -49,7 +46,6 @@
       "Bash(docker buildx:*)",
       "Bash(CI=true task build:all-binaries --dry)",
       "Bash(CI=true task image:core --dry)",
-      "WebFetch(domain:taskfile.dev)",
       "Bash(set -e -o pipefail)",
       "Bash(/bin/sh:*)",
       "Bash(du -sh:*)",
@@ -63,7 +59,7 @@
       "Bash(ulimit -n:*)",
       "Bash(sysctl:*)",
       "Bash(gopls:*)",
-      "WebFetch(domain:gopls-mcp.org)",
+      "WebFetch(domain:*)",
       "Bash(kill:*)",
       "Bash(gopls-mcp:*)",
       "Bash(gh search issues:*)",
@@ -79,12 +75,17 @@
       "Bash(git push:*)",
       "mcp__gopls-mcp__go_build_check",
       "mcp__gopls-mcp__go_get_started",
-      "Bash(gh pr view:*)"
+      "Bash(gh pr view:*)",
+      "WebFetch(domain:openfeature.dev)",
+      "Bash(gh repo view:*)",
+      "mcp__gopls-mcp__go_search",
+      "mcp__gopls-mcp__go_definition",
+      "WebFetch(domain:opentelemetry.io)"
     ]
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
-    "gopls"
+    "gopls-mcp"
   ],
   "sandbox": {
     "enabled": false,
