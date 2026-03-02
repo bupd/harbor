@@ -95,7 +95,7 @@ stg import -S 8gcr-ee/patches/series  # continues from where it left off
 ### Making Changes to an Existing Patch
 
 ```bash
-stg goto 0002-ldap-admin-group-filter  # Jump to that patch
+stg goto 0002-hybrid-auth-multi  # Jump to that patch
 # Make your changes...
 git add -A
 stg refresh                            # Updates the patch
@@ -110,7 +110,7 @@ stg push -a                            # Re-apply remaining patches
 stg push -a
 
 # Create a new patch
-stg new 0013-my-feature -m "feat(scope): add my feature"
+stg new 0005-my-feature -m "feat(scope): add my feature"
 
 # Make your changes
 # ...
@@ -211,8 +211,9 @@ stg export -d 8gcr-ee/patches/
     ├── series                    # Patch ordering (stgit format)
     ├── README.md                 # This file
     ├── 0001-branding
-    ├── 0002-ldap-admin-group-filter
-    └── ...
+    ├── 0002-hybrid-auth-multi
+    ├── 0003-sftp-replication
+    └── 0004-federated-idp
 ```
 
 ## Series File Format
