@@ -41,18 +41,6 @@ From: Vadim Bauer <vb@container-registry.com>
  create mode 100644 src/pkg/reg/adapter/storage/s3_factory.go
  create mode 100644 src/pkg/reg/adapter/storage/sftp_factory.go
 
-diff --git a/.gitignore b/.gitignore
-index b4c76b3ae..f67462d2e 100644
---- a/.gitignore
-+++ b/.gitignore
-@@ -63,3 +63,7 @@ tests/e2e_setup/robotvars.py
- .task/checksum
- devenv/token_service_key.pem
- tmp/
-+.gitlab-ci-local-env
-+.gitlab-ci-local-variables.yml
-+.gitlab-ci-local/.gitignore
-+.gitlab-ci-local
 diff --git a/src/controller/registry/controller.go b/src/controller/registry/controller.go
 index b2b8038b3..0d80b50b5 100644
 --- a/src/controller/registry/controller.go
@@ -86,10 +74,10 @@ index d89822026..17b72d7fc 100644
  		return err
  	}
 diff --git a/src/go.mod b/src/go.mod
-index 27d680be3..0b0ee55d7 100644
+index 5477fe7ca..f2a0548d6 100644
 --- a/src/go.mod
 +++ b/src/go.mod
-@@ -145,6 +145,7 @@ require (
+@@ -146,6 +146,7 @@ require (
  	github.com/josharian/intern v1.0.0 // indirect
  	github.com/json-iterator/go v1.1.12 // indirect
  	github.com/klauspost/compress v1.18.0 // indirect
@@ -97,7 +85,7 @@ index 27d680be3..0b0ee55d7 100644
  	github.com/lib/pq v1.10.9 // indirect
  	github.com/magiconair/properties v1.8.7 // indirect
  	github.com/mailru/easyjson v0.9.0 // indirect
-@@ -206,6 +207,8 @@ require (
+@@ -207,6 +208,8 @@ require (
  	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
  )
  
@@ -107,10 +95,10 @@ index 27d680be3..0b0ee55d7 100644
  	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
  	github.com/docker/distribution => github.com/distribution/distribution v2.8.2+incompatible
 diff --git a/src/go.sum b/src/go.sum
-index 6bc6ee9b5..5f839dc28 100644
+index b588432b3..20e6cedc8 100644
 --- a/src/go.sum
 +++ b/src/go.sum
-@@ -388,6 +388,8 @@ github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zt
+@@ -396,6 +396,8 @@ github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zt
  github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
  github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
  github.com/konsorten/go-windows-terminal-sequences v1.0.2/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
@@ -119,7 +107,7 @@ index 6bc6ee9b5..5f839dc28 100644
  github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515/go.mod h1:+0opPa2QZZtGFBFZlji/RkVcI2GknAs/DXo4wKdlNEc=
  github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
  github.com/kr/pretty v0.2.0/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
-@@ -465,6 +467,8 @@ github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
+@@ -485,6 +487,8 @@ github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
  github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
  github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
  github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

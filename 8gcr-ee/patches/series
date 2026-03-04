@@ -1,14 +1,5 @@
-# This series applies on Git commit d2a48146da11f4a9c2225ed38e319cde4bd5413c
+# This series applies on Git commit 4a1a49df2910c05fc5a53c1bd93a1e094352aca6
 0001-branding
-0002-ldap-admin-group-filter
-0003-hybrid-auth-multi
-0004-sftp-replication
-0005-randomise-scheduling
-0006-improved-copy-pull
-0007-conditional-immutability
-0008-subscription-menu
-0009-harbor-satellite-adapter
-0010-x509-negative-serial
-0011-auditlog-page-size
-0012-proxy-cache-remote-not
-0013-federated-idp
+0002-hybrid-auth-multi
+0003-sftp-replication
+0004-federated-idp
