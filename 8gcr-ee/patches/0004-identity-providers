@@ -89,11 +89,10 @@ From: bupd <bupdprasanth@gmail.com>
  src/controller/robot/model.go                      |    1 
  src/controller/systeminfo/controller.go            |    2 
  src/controller/systeminfo/controller_test.go       |   13 
- src/go.mod                                         |   16 
- src/go.sum                                         |   12 
+ src/go.mod                                         |   17 
+ src/go.sum                                         |   25 
  src/lib/config/metadata/metadatalist.go            |    1 
  src/lib/config/userconfig.go                       |    5 
- src/lib/strings.go                                 |   26 
  src/pkg/federatedidp/REQUIREMENTS.md               |  491 ++++
  src/pkg/federatedidp/dao/dao.go                    |  656 ++++++
  src/pkg/federatedidp/dao/dao_test.go               | 1022 +++++++++
@@ -168,10 +167,10 @@ From: bupd <bupdprasanth@gmail.com>
  src/server/v2.0/handler/model/federated_idp.go     |  112 +
  src/server/v2.0/handler/model/robot.go             |   27 
  src/server/v2.0/handler/project.go                 |    8 
- src/server/v2.0/handler/robot.go                   |  112 +
+ src/server/v2.0/handler/robot.go                   |  113 +
  src/server/v2.0/handler/robot_test.go              |  134 +
  src/server/v2.0/handler/systeminfo.go              |    1 
- 167 files changed, 21079 insertions(+), 53 deletions(-)
+ 166 files changed, 21068 insertions(+), 53 deletions(-)
  create mode 100644 docs/ADR-federated-idp.md
  create mode 100644 docs/img/fedidp-enterprise-1.png
  create mode 100644 docs/img/fedidp-enterprise-2.png
@@ -154659,7 +154658,7 @@ index 6c3eb4546..3532a5e2f 100644
  			},
  		},
 diff --git a/src/go.mod b/src/go.mod
-index ab9aea474..54df91e9b 100644
+index ab9aea474..9d44c6d50 100644
 --- a/src/go.mod
 +++ b/src/go.mod
 @@ -81,6 +81,11 @@ require (
@@ -154683,7 +154682,15 @@ index ab9aea474..54df91e9b 100644
  	github.com/denverdino/aliyungo v0.0.0-20191227032621-df38c6fa730c // indirect
  	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
  	github.com/dnaeon/go-vcr v1.2.0 // indirect
-@@ -146,6 +151,13 @@ require (
+@@ -124,6 +129,7 @@ require (
+ 	github.com/go-openapi/swag/typeutils v0.25.1 // indirect
+ 	github.com/go-openapi/swag/yamlutils v0.25.1 // indirect
+ 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
++	github.com/goccy/go-json v0.10.3 // indirect
+ 	github.com/gogo/protobuf v1.3.2 // indirect
+ 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
+ 	github.com/google/go-querystring v1.1.0 // indirect
+@@ -146,6 +152,13 @@ require (
  	github.com/json-iterator/go v1.1.12 // indirect
  	github.com/klauspost/compress v1.18.0 // indirect
  	github.com/kr/fs v0.1.0 // indirect
@@ -154697,7 +154704,7 @@ index ab9aea474..54df91e9b 100644
  	github.com/lib/pq v1.10.9 // indirect
  	github.com/magiconair/properties v1.8.7 // indirect
  	github.com/mailru/easyjson v0.9.0 // indirect
-@@ -165,6 +177,7 @@ require (
+@@ -165,6 +178,7 @@ require (
  	github.com/sagikazarmark/locafero v0.4.0 // indirect
  	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
  	github.com/satori/go.uuid v1.2.0 // indirect
@@ -154705,7 +154712,7 @@ index ab9aea474..54df91e9b 100644
  	github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18 // indirect
  	github.com/sirupsen/logrus v1.9.3 // indirect
  	github.com/smartystreets/goconvey v1.8.1 // indirect
-@@ -175,6 +188,7 @@ require (
+@@ -175,6 +189,7 @@ require (
  	github.com/stretchr/objx v0.5.2 // indirect
  	github.com/subosito/gotenv v1.6.0 // indirect
  	github.com/valyala/bytebufferpool v1.0.0 // indirect
@@ -154714,41 +154721,60 @@ index ab9aea474..54df91e9b 100644
  	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
  	github.com/volcengine/volc-sdk-golang v1.0.23 // indirect
 diff --git a/src/go.sum b/src/go.sum
-index 5f839dc28..cb1980b26 100644
+index a76142150..b51124c05 100644
 --- a/src/go.sum
 +++ b/src/go.sum
-@@ -111,6 +111,7 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
+@@ -111,6 +111,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
  github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
  github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
  github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 h1:NMZiJj8QnKe1LgsbDayM4UoHwbvwDRwnI3hwNaAHRnc=
 +github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0/go.mod h1:ZXNYxsqcloTdSy/rNShjYzMhyjf0LaoftYK0p+A3h40=
  github.com/denverdino/aliyungo v0.0.0-20191227032621-df38c6fa730c h1:ZjNKFQ2pBtbkmtporMvGVu2M7fs3Ip3sSy0Gyqsq8xc=
  github.com/denverdino/aliyungo v0.0.0-20191227032621-df38c6fa730c/go.mod h1:dV8lFg6daOBZbT6/BDGIz6Y3WFGn8juu6G+CQ6LHtl0=
  github.com/dghubble/sling v1.4.2 h1:vs1HIGBbSl2SEALyU+irpYFLZMfc49Fp+jYryFebQjM=
-@@ -402,6 +403,14 @@ github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
+@@ -221,6 +223,8 @@ github.com/go-viper/mapstructure/v2 v2.4.0 h1:EBsztssimR/CONLSZZ04E8qAkxNYq4Qp9L
+ github.com/go-viper/mapstructure/v2 v2.4.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
+ github.com/gocarina/gocsv v0.0.0-20210516172204-ca9e8a8ddea8 h1:hp1oqdzmv37vPLYFGjuM/RmUgUMfD9vQfMszc54l55Y=
+ github.com/gocarina/gocsv v0.0.0-20210516172204-ca9e8a8ddea8/go.mod h1:5YoVOkjYAQumqlV356Hj3xeYh4BdZuLE0/nRkf2NKkI=
++github.com/goccy/go-json v0.10.3 h1:KZ5WoDbxAIgm2HNbYckL0se1fHD6rz5j4ywS6ebzDqA=
++github.com/goccy/go-json v0.10.3/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
+ github.com/gofrs/uuid v4.0.0+incompatible h1:1SD/1F5pU8p29ybwgQSwpQk+mwdRrXCYuPhW6m+TnJw=
+ github.com/gofrs/uuid v4.0.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
+ github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
+@@ -402,6 +406,22 @@ github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
  github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
  github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
  github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
++github.com/lestrrat-go/blackmagic v1.0.4 h1:IwQibdnf8l2KoO+qC3uT4OaTWsW7tuRQXy9TRN9QanA=
 +github.com/lestrrat-go/blackmagic v1.0.4/go.mod h1:6AWFyKNNj0zEXQYfTMPfZrAXUWUfTIZ5ECEUEJaijtw=
++github.com/lestrrat-go/dsig v1.0.0 h1:OE09s2r9Z81kxzJYRn07TFM9XA4akrUdoMwr0L8xj38=
 +github.com/lestrrat-go/dsig v1.0.0/go.mod h1:dEgoOYYEJvW6XGbLasr8TFcAxoWrKlbQvmJgCR0qkDo=
++github.com/lestrrat-go/dsig-secp256k1 v1.0.0 h1:JpDe4Aybfl0soBvoVwjqDbp+9S1Y2OM7gcrVVMFPOzY=
 +github.com/lestrrat-go/dsig-secp256k1 v1.0.0/go.mod h1:CxUgAhssb8FToqbL8NjSPoGQlnO4w3LG1P0qPWQm/NU=
++github.com/lestrrat-go/httpcc v1.0.1 h1:ydWCStUeJLkpYyjLDHihupbn2tYmZ7m22BGkcvZZrIE=
 +github.com/lestrrat-go/httpcc v1.0.1/go.mod h1:qiltp3Mt56+55GPVCbTdM9MlqhvzyuL6W/NMDA8vA5E=
++github.com/lestrrat-go/httprc/v3 v3.0.1 h1:3n7Es68YYGZb2Jf+k//llA4FTZMl3yCwIjFIk4ubevI=
 +github.com/lestrrat-go/httprc/v3 v3.0.1/go.mod h1:2uAvmbXE4Xq8kAUjVrZOq1tZVYYYs5iP62Cmtru00xk=
++github.com/lestrrat-go/jwx/v3 v3.0.11 h1:yEeUGNUuNjcez/Voxvr7XPTYNraSQTENJgtVTfwvG/w=
 +github.com/lestrrat-go/jwx/v3 v3.0.11/go.mod h1:XSOAh2SiXm0QgRe3DulLZLyt+wUuEdFo81zuKTLcvgQ=
++github.com/lestrrat-go/option v1.0.1 h1:oAzP2fvZGQKWkvHa1/SAcFolBEca1oN+mQ7eooNBEYU=
 +github.com/lestrrat-go/option v1.0.1/go.mod h1:5ZHFbivi4xwXxhxY9XHDe2FHo6/Z7WWmtT7T5nBBp3I=
++github.com/lestrrat-go/option/v2 v2.0.0 h1:XxrcaJESE1fokHy3FpaQ/cXW8ZsIdWcdFzzLOcID3Ss=
 +github.com/lestrrat-go/option/v2 v2.0.0/go.mod h1:oSySsmzMoR0iRzCDCaUfsCzxQHUEuhOViQObyy7S6Vg=
  github.com/lib/pq v1.0.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
  github.com/lib/pq v1.1.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
  github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
-@@ -510,6 +519,7 @@ github.com/sagikazarmark/slog-shim v0.1.0 h1:diDBnUNK9N/354PgrxMywXnAwEr1QZcOr6g
+@@ -510,6 +530,8 @@ github.com/sagikazarmark/slog-shim v0.1.0 h1:diDBnUNK9N/354PgrxMywXnAwEr1QZcOr6g
  github.com/sagikazarmark/slog-shim v0.1.0/go.mod h1:SrcSrq8aKtyuqEI1uvTDTK1arOWRIczQRv+GVI1AkeQ=
  github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
  github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
++github.com/segmentio/asm v1.2.0 h1:9BQrFxC+YOHJlTlHGkTrFWf59nbL3XnCoFLTwDCI7ys=
 +github.com/segmentio/asm v1.2.0/go.mod h1:BqMnlJP91P8d+4ibuonYZw9mfnzI9HfxselHZr5aAcs=
  github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18 h1:DAYUYH5869yV94zvCES9F51oYtN5oGlwjxJJz7ZCnik=
  github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18/go.mod h1:nkxAfR/5quYxwPZhyDxgasBMnRtBZd0FCEpawpjMUFg=
  github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24/go.mod h1:M+9NzErvs504Cn4c5DxATwIqPbtswREoFCre64PpcG4=
-@@ -547,6 +557,7 @@ github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXf
+@@ -547,6 +569,7 @@ github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXf
  github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
  github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
  github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
@@ -154756,10 +154782,11 @@ index 5f839dc28..cb1980b26 100644
  github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
  github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
  github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
-@@ -566,6 +577,7 @@ github.com/uber/jaeger-lib v2.4.1+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6
+@@ -566,6 +589,8 @@ github.com/uber/jaeger-lib v2.4.1+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6
  github.com/urfave/cli v1.22.12/go.mod h1:sSBEIC79qR6OvcmsD4U3KABeOTxDqQtdDnaFuUN30b8=
  github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
  github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
++github.com/valyala/fastjson v1.6.4 h1:uAUNq9Z6ymTgGhcm0UynUAB6tlbakBrz6CQFax3BXVQ=
 +github.com/valyala/fastjson v1.6.4/go.mod h1:CLCAqky6SMuOcxStkYQvblddUtoRxhYMGLrsQns1aXY=
  github.com/vbatts/tar-split v0.11.3 h1:hLFqsOLQ1SsppQNTMpkpPXClLDfC2A3Zgy9OUU+RVck=
  github.com/vbatts/tar-split v0.11.3/go.mod h1:9QlHN18E+fEH7RdG+QAJJcuya3rqT7eXSTY7wGrAokY=
@@ -154788,47 +154815,6 @@ index f5125de1b..3fa753966 100644
 +// EnableProjectFederatedIDP indicates whether enable federated idp for project
 +func EnableProjectFederatedIDP(ctx context.Context) bool {
 +	return DefaultMgr().Get(ctx, common.EnableProjectFederatedIDP).GetBool()
-+}
-diff --git a/src/lib/strings.go b/src/lib/strings.go
-index a35b910af..ec041c4db 100644
---- a/src/lib/strings.go
-+++ b/src/lib/strings.go
-@@ -15,6 +15,8 @@
- package lib
- 
- import (
-+	"fmt"
-+	"net/url"
- 	"strings"
- 
- 	"golang.org/x/text/cases"
-@@ -43,3 +45,27 @@ func SliceToUpper(s []string) []string {
- 
- 	return result
- }
-+
-+// ValidateURL parses and validates a URL.
-+// Returns a url string and an error (if invalid).
-+func ValidateURL(input string) (string, error) {
-+	// trim whitespace around the input
-+	cleaned := strings.TrimSpace(input)
-+
-+	if cleaned == "" {
-+		return "", fmt.Errorf("invalid url: empty")
-+	}
-+
-+	// parse the URL using net/url
-+	parsed, err := url.Parse(cleaned)
-+	if err != nil {
-+		return "", err
-+	}
-+
-+	// ensure scheme + host are present
-+	if parsed.Scheme == "" || parsed.Host == "" {
-+		return "", fmt.Errorf("invalid url: missing scheme or host")
-+	}
-+
-+	return parsed.String(), nil
 +}
 diff --git a/src/pkg/federatedidp/REQUIREMENTS.md b/src/pkg/federatedidp/REQUIREMENTS.md
 new file mode 100644
@@ -172855,10 +172841,10 @@ index de75072b8..c66471277 100644
  	q, err := a.quotaCtl.GetByRef(ctx, quota.ProjectReference, referenceID)
  	if err != nil {
 diff --git a/src/server/v2.0/handler/robot.go b/src/server/v2.0/handler/robot.go
-index a49d52cc7..c2c38769c 100644
+index a49d52cc7..534757125 100644
 --- a/src/server/v2.0/handler/robot.go
 +++ b/src/server/v2.0/handler/robot.go
-@@ -29,6 +29,7 @@ import (
+@@ -29,9 +29,11 @@ import (
  	"github.com/goharbor/harbor/src/common/security/local"
  	robotSc "github.com/goharbor/harbor/src/common/security/robot"
  	"github.com/goharbor/harbor/src/common/utils"
@@ -172866,7 +172852,11 @@ index a49d52cc7..c2c38769c 100644
  	"github.com/goharbor/harbor/src/controller/robot"
  	"github.com/goharbor/harbor/src/lib"
  	"github.com/goharbor/harbor/src/lib/errors"
-@@ -42,13 +43,15 @@ import (
++	"github.com/goharbor/harbor/src/lib/config"
+ 	"github.com/goharbor/harbor/src/lib/log"
+ 	"github.com/goharbor/harbor/src/pkg/permission/types"
+ 	pkg "github.com/goharbor/harbor/src/pkg/robot/model"
+@@ -42,13 +44,15 @@ import (
  
  func newRobotAPI() *robotAPI {
  	return &robotAPI{
@@ -172884,7 +172874,7 @@ index a49d52cc7..c2c38769c 100644
  }
  
  func (rAPI *robotAPI) CreateRobot(ctx context.Context, params operation.CreateRobotParams) middleware.Responder {
-@@ -111,18 +114,74 @@ func (rAPI *robotAPI) CreateRobot(ctx context.Context, params operation.CreateRo
+@@ -111,18 +115,74 @@ func (rAPI *robotAPI) CreateRobot(ctx context.Context, params operation.CreateRo
  		return rAPI.SendError(ctx, err)
  	}
  
@@ -172964,7 +172954,7 @@ index a49d52cc7..c2c38769c 100644
  	})
  }
  
-@@ -147,6 +206,22 @@ func (rAPI *robotAPI) DeleteRobot(ctx context.Context, params operation.DeleteRo
+@@ -147,6 +207,22 @@ func (rAPI *robotAPI) DeleteRobot(ctx context.Context, params operation.DeleteRo
  		}
  		return rAPI.SendError(ctx, err)
  	}
@@ -172987,7 +172977,7 @@ index a49d52cc7..c2c38769c 100644
  	return operation.NewDeleteRobotOK()
  }
  
-@@ -209,6 +284,13 @@ func (rAPI *robotAPI) ListRobot(ctx context.Context, params operation.ListRobotP
+@@ -209,6 +285,13 @@ func (rAPI *robotAPI) ListRobot(ctx context.Context, params operation.ListRobotP
  
  	var results []*models.Robot
  	for _, r := range robots {
@@ -173001,7 +172991,7 @@ index a49d52cc7..c2c38769c 100644
  		results = append(results, model.NewRobot(r).ToSwagger())
  	}
  
-@@ -233,6 +315,14 @@ func (rAPI *robotAPI) GetRobotByID(ctx context.Context, params operation.GetRobo
+@@ -233,6 +316,14 @@ func (rAPI *robotAPI) GetRobotByID(ctx context.Context, params operation.GetRobo
  		return rAPI.SendError(ctx, err)
  	}
  
@@ -173016,7 +173006,7 @@ index a49d52cc7..c2c38769c 100644
  	return operation.NewGetRobotByIDOK().WithPayload(model.NewRobot(r).ToSwagger())
  }
  
-@@ -270,6 +360,14 @@ func (rAPI *robotAPI) RefreshSec(ctx context.Context, params operation.RefreshSe
+@@ -270,6 +361,14 @@ func (rAPI *robotAPI) RefreshSec(ctx context.Context, params operation.RefreshSe
  		return rAPI.SendError(ctx, err)
  	}
  

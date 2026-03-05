@@ -5,10 +5,9 @@ From: bupd <bupdprasanth@gmail.com>
 Signed-off-by: bupd <bupdprasanth@gmail.com>
 
 fix hybrid-auth UI
-
 ---
- src/controller/user/controller.go |  3 ++-
- src/core/auth/authenticator.go    | 13 ++++++++++++-
+ src/controller/user/controller.go |    3 ++-
+ src/core/auth/authenticator.go    |   13 ++++++++++++-
  2 files changed, 14 insertions(+), 2 deletions(-)
 
 diff --git a/src/controller/user/controller.go b/src/controller/user/controller.go
@@ -41,7 +40,7 @@ index 7134edc69..3efb5cbdb 100644
 @@ -255,6 +255,17 @@ func PostAuthenticate(ctx context.Context, u *models.User) error {
  	return helper.PostAuthenticate(ctx, u)
  }
-
+ 
 +// IsDBUser checks if the user is from DB of Harbor
 +func IsDBUser(ctx context.Context, username string) bool {
 +	u, err := user.Mgr.GetByName(ctx, username)
