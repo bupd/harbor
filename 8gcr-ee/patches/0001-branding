@@ -1,23 +1,1620 @@
-[PATCH] feat(portal): update sign-in page branding
+[PATCH] feat: add branding
 
-From: Vadim Bauer <vb@container-registry.com>
+From: bupd <bupdprasanth@gmail.com>
 
-Update the "More Info" link on the sign-in page to point to
-container-registry.com instead of the Harbor GitHub repository.
+Signed-off-by: bupd <bupdprasanth@gmail.com>
+
 ---
- .../src/app/account/sign-in/sign-in.component.html |    2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ api/v2.0/swagger.yaml                              | 112 ++++++++-
+ .../postgresql/0171_8gears_2.14_branding.up.sql    |   5 +
+ src/controller/systeminfo/controller.go            | 280 ++++++++++++++++++++-
+ src/pkg/branding/dao/dao.go                        |  66 +++++
+ src/pkg/branding/manager.go                        |  59 +++++
+ src/pkg/branding/models/branding.go                |  56 +++++
+ .../src/app/account/sign-in/sign-in.component.html |   2 +-
+ .../src/app/account/sign-in/sign-in.component.ts   |  28 ++-
+ src/portal/src/app/app.component.ts                |  30 ++-
+ src/portal/src/app/app.module.ts                   |   4 +-
+ .../config/branding/branding.component.html        |  41 +++
+ .../config/branding/branding.component.scss        |   0
+ .../config/branding/branding.component.spec.ts     |  13 +
+ .../config/branding/branding.component.ts          | 214 ++++++++++++++++
+ .../left-side-nav/config/config.component.html     |  10 +
+ .../app/base/left-side-nav/config/config.module.ts |   9 +-
+ .../src/app/services/skinable-config.service.ts    |  80 +++++-
+ .../about-dialog/about-dialog.component.html       |   6 +-
+ .../about-dialog/about-dialog.component.ts         |  31 ++-
+ .../global-search/global-search.component.ts       |  79 ++++--
+ .../components/navigator/navigator.component.html  |   8 +-
+ .../components/navigator/navigator.component.ts    |  27 +-
+ src/portal/src/i18n/lang/en-us-lang.json           |   5 +
+ src/server/v2.0/handler/systeminfo.go              |  41 +++
+ 24 files changed, 1121 insertions(+), 85 deletions(-)
 
+diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
+index 7dfbfe00e..191574472 100644
+--- a/api/v2.0/swagger.yaml
++++ b/api/v2.0/swagger.yaml
+@@ -4106,6 +4106,59 @@ paths:
+             $ref: '#/definitions/GeneralInfo'
+         '500':
+           $ref: '#/responses/500'
++  /systeminfo/branding:
++    get:
++      summary: Get system branding configuration.
++      operationId: getBrandingInfo
++      description: |
++        Returns branding configuration such as product name,
++        logo, header colors, and login page metadata.
++        This endpoint is public and accessible without authentication.
++      tags:
++        - systeminfo
++      responses:
++        '200':
++          description: Branding configuration retrieved successfully.
++          schema:
++            $ref: '#/definitions/BrandingConfig'
++        '401':
++          $ref: '#/responses/401'
++        '403':
++          $ref: '#/responses/403'
++        '404':
++          $ref: '#/responses/404'
++        '500':
++          $ref: '#/responses/500'
++
++    post:
++      summary: Update branding configuration.
++      operationId: updateBrandingInfo
++      description: |
++        Allows updating branding configuration. The request body must
++        contain the complete branding JSON object.
++      tags:
++        - systeminfo
++      parameters:
++        - in: body
++          name: brandingConfig
++          required: true
++          schema:
++            $ref: '#/definitions/BrandingConfig'
++      responses:
++        '200':
++          description: Branding configuration updated successfully.
++          schema:
++            $ref: '#/definitions/BrandingConfig'
++        '400':
++          $ref: '#/responses/400'
++        '401':
++          $ref: '#/responses/401'
++        '403':
++          $ref: '#/responses/403'
++        '404':
++          $ref: '#/responses/404'
++        '500':
++          $ref: '#/responses/500'
+   /systeminfo/volumes:
+     get:
+       summary: Get system volume info (total/free size).
+@@ -8059,6 +8112,63 @@ definitions:
+         x-nullable: true
+         x-omitempty: true
+         description: The OIDC provider name, empty if current auth is not OIDC_auth or OIDC provider is not configured.
++  BrandingConfig:
++    type: object
++    properties:
++      headerBgColor:
++        type: object
++        x-nullable: true
++        x-omitempty: true
++        description: Header background color configuration for light and dark mode.
++        properties:
++          darkMode:
++            type: string
++            x-nullable: true
++            x-omitempty: true
++            description: Background color used in dark mode theme.
++            example: "#0d1117"
++          lightMode:
++            type: string
++            x-nullable: true
++            x-omitempty: true
++            description: Background color used in light mode theme.
++            example: "#ffffff"
++      loginBgImg:
++        type: string
++        x-nullable: true
++        x-omitempty: true
++        description: URL or base64-encoded image used as background on the login page.
++        example: "https://example.com/bg.png"
++      loginTitle:
++        type: string
++        x-nullable: true
++        x-omitempty: true
++        description: Title displayed on the login page.
++        example: "Welcome to Harbor"
++      product:
++        type: object
++        x-nullable: true
++        x-omitempty: true
++        description: Product branding information including name, logo, and intro text.
++        properties:
++          name:
++            type: string
++            x-nullable: true
++            x-omitempty: true
++            description: Product name displayed in UI.
++            example: "Harbor Enterprise"
++          logo:
++            type: string
++            x-nullable: true
++            x-omitempty: true
++            description: URL or base64-encoded product logo.
++            example: "https://example.com/logo.png"
++          introduction:
++            type: string
++            x-nullable: true
++            x-omitempty: true
++            description: Short introduction or description displayed in UI.
++            example: "Your trusted cloud-native registry"
+   AuthproxySetting:
+     type: object
+     properties:
+@@ -9441,7 +9551,7 @@ definitions:
+         x-isnullable: true
+       disabled_audit_log_event_types:
+         type: string
+-        description: the list to disable log audit event types.
++        description: the list to disable log audit event types.
+         x-omitempty: true
+         x-isnullable: true
+   StringConfigItem:
+diff --git a/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql b/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
+new file mode 100644
+index 000000000..f8e246635
+--- /dev/null
++++ b/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
+@@ -0,0 +1,5 @@
++CREATE TABLE IF NOT EXISTS branding (
++    id            INTEGER PRIMARY KEY NOT NULL,
++    config        TEXT NOT NULL,
++    update_time  TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
++);
+diff --git a/src/controller/systeminfo/controller.go b/src/controller/systeminfo/controller.go
+index e3d40b303..faa54fde9 100644
+--- a/src/controller/systeminfo/controller.go
++++ b/src/controller/systeminfo/controller.go
+@@ -16,10 +16,13 @@ package systeminfo
+
+ import (
+ 	"context"
++	"encoding/json"
+ 	"fmt"
+ 	"io"
+ 	"os"
++	"regexp"
+ 	"strings"
++	"sync"
+ 	"time"
+
+ 	"github.com/goharbor/harbor/src/common"
+@@ -28,9 +31,11 @@ import (
+ 	"github.com/goharbor/harbor/src/lib/config/models"
+ 	"github.com/goharbor/harbor/src/lib/errors"
+ 	"github.com/goharbor/harbor/src/lib/log"
++	"github.com/goharbor/harbor/src/pkg/branding"
+ 	"github.com/goharbor/harbor/src/pkg/systeminfo"
+ 	"github.com/goharbor/harbor/src/pkg/systeminfo/imagestorage"
+ 	"github.com/goharbor/harbor/src/pkg/version"
++	mdl "github.com/goharbor/harbor/src/server/v2.0/models"
+ )
+
+ const defaultRootCert = "/etc/core/ca/ca.crt"
+@@ -53,7 +58,8 @@ type Data struct {
+ }
+
+ type protectedData struct {
+-	CurrentTime                 time.Time
++	CurrentTime time.Time
++
+ 	RegistryURL                 string
+ 	HarborVersion               string
+ 	ExtURL                      string
+@@ -70,6 +76,27 @@ type Options struct {
+ 	WithProtectedInfo bool
+ }
+
++// BrandingConfig wraps the UI branding settings returned to the client.
++type BrandingConfig struct {
++	HeaderBgColor *HeaderBgColor `json:"headerBgColor,omitempty"` // Background colors for header in light/dark mode
++	LoginBgImg    string         `json:"loginBgImg,omitempty"`    // URL/base64 for login background image
++	LoginTitle    string         `json:"loginTitle,omitempty"`    // Login page title
++	Product       *ProductInfo   `json:"product,omitempty"`       // Product branding information
++}
++
++// HeaderBgColor defines background colors for light and dark mode.
++type HeaderBgColor struct {
++	DarkMode  string `json:"darkMode,omitempty"`  // Dark mode header background color
++	LightMode string `json:"lightMode,omitempty"` // Light mode header background color
++}
++
++// ProductInfo contains branding information about the product.
++type ProductInfo struct {
++	Name         string `json:"name,omitempty"`         // Product name shown in UI
++	Logo         string `json:"logo,omitempty"`         // URL/base64 of product logo
++	Introduction string `json:"introduction,omitempty"` // Short descriptive text
++}
++
+ // Controller defines the methods needed for systeminfo API
+ type Controller interface {
+
+@@ -81,9 +108,194 @@ type Controller interface {
+
+ 	// GetCA returns a ReadCloser of Harbor's CA if it's configured and accessible from Harbor core
+ 	GetCA(ctx context.Context) (io.ReadCloser, error)
++
++	// GetBrandingConfig returns the branding config
++	GetBrandingConfig(ctx context.Context) (*mdl.BrandingConfig, error)
++
++	// UpdateBrandingConfig updates the branding config
++	UpdateBrandingConfig(ctx context.Context, config *mdl.BrandingConfig) error
++}
++
++type controller struct {
++	brandMgr branding.Manager
++	// In-memory cache for branding config
++	brandingCache struct {
++		sync.RWMutex                     // Mutex for thread-safe access
++		config       *mdl.BrandingConfig // The actual branding data
++	}
++}
++
++var (
++	DarkMode     = ""
++	LightMode    = ""
++	LoginBgImg   = "https://4kwallpapers.com/images/walls/thumbs_3t/1819.jpg"
++	LoginTitle   = "Container Registry"
++	Name         = "Container Registry"
++	Logo         = "https://logowik.com/content/uploads/images/online-domain9906.jpg"
++	Introduction = "8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."
++)
++
++func AssignFromJSON(jsonData string) (*BrandingConfig, error) {
++	if len(jsonData) == 0 {
++		return nil, errors.New("empty json data to parse")
++	}
++
++	// parse into temp struct that only contains allowed fields
++	var incoming BrandingConfig
++	if err := json.Unmarshal([]byte(jsonData), &incoming); err != nil {
++		return nil, err
++	}
++
++	// assign allowed fields
++	config := BrandingConfig{} // ← clean object (no extra fields)
++
++	// inline comments — show changes
++	if incoming.HeaderBgColor != nil { // changed: copy only whitelisted values
++		config.HeaderBgColor = incoming.HeaderBgColor
++	}
++	if len(incoming.LoginBgImg) > 0 {
++		config.LoginBgImg = incoming.LoginBgImg
++	}
++	if len(incoming.LoginTitle) > 0 {
++		config.LoginTitle = incoming.LoginTitle
++	}
++	if len(incoming.Product.Name) > 0 {
++		config.Product = incoming.Product
++	}
++
++	return &config, nil
++}
++
++// ConvertBrandingConfig converts sanitized BrandingConfig into model.BrandingConfig
++func ConvertBrandingConfigToSwagger(cfg string) (*mdl.BrandingConfig, error) {
++	// inline comments showing mapped fields
++	if len(cfg) == 0 {
++		return nil, errors.New("empty json data to parse")
++	}
++
++	// Step 1: Decode raw JSON into temp struct (loose)
++	var temp BrandingConfig
++	if err := json.Unmarshal([]byte(cfg), &temp); err != nil { // ← fixed: []byte()
++		return nil, fmt.Errorf("failed to unmarshal branding config: %v", err) // ← fixed formatting
++	}
++
++	// Step 2: Create target struct for Swagger type
++	result := &mdl.BrandingConfig{}
++
++	// Step 3: Map fields safely (nested fields allowed)
++	if temp.HeaderBgColor != nil {
++		result.HeaderBgColor = &mdl.BrandingConfigHeaderBgColor{
++			DarkMode:  &temp.HeaderBgColor.DarkMode,  // ← copy exact field
++			LightMode: &temp.HeaderBgColor.LightMode, // ← copy exact field
++		}
++	}
++
++	if len(temp.LoginBgImg) > 0 {
++		result.LoginBgImg = &temp.LoginBgImg
++	}
++
++	if len(temp.LoginTitle) > 0 {
++		result.LoginTitle = &temp.LoginTitle
++	}
++
++	if temp.Product != nil {
++		result.Product = &mdl.BrandingConfigProduct{
++			Name:         &temp.Product.Name,
++			Logo:         &temp.Product.Logo,
++			Introduction: &temp.Product.Introduction,
++		}
++	}
++
++	return result, nil
+ }
+
+-type controller struct{}
++func (c *controller) GetBrandingConfig(ctx context.Context) (*mdl.BrandingConfig, error) {
++	logger := log.GetLogger(ctx)
++
++	c.brandingCache.RLock()
++	cfg := c.brandingCache.config
++	c.brandingCache.RUnlock()
++	if cfg != nil {
++		logger.Debugf("Cache hit for branding config")
++		return cfg, nil
++	}
++
++	logger.Info("Cache miss. Fetching branding config from DB.")
++
++	branding, err := c.brandMgr.Get(ctx)
++	if err != nil {
++		logger.Errorf("Error occurred getting config: %v", err)
++		return nil, err
++	}
++	swagbranding, err := ConvertBrandingConfigToSwagger(branding.Config)
++	if err != nil {
++		logger.Errorf("Error occurred converting config: %v", err)
++		return nil, err
++	}
++
++	c.brandingCache.Lock()
++	defer c.brandingCache.Unlock()
++
++	if c.brandingCache.config != nil {
++		logger.Debug("Cache populated by another goroutine during fetch. should not be here")
++		return c.brandingCache.config, nil
++	}
++
++	c.brandingCache.config = swagbranding
++	logger.Infof("Successfully cached branding config")
++
++	return swagbranding, nil
++}
++
++// UpdateBrandingConfig updates the branding config
++func (c *controller) UpdateBrandingConfig(ctx context.Context, config *mdl.BrandingConfig) error {
++	logger := log.GetLogger(ctx)
++	if config == nil { // added: prevent nil writes
++		return errors.New("config cannot be nil")
++	}
++	raw, err := BrandingConfigToString(config)
++	if err != nil {
++		return err
++	}
++
++	err = c.brandMgr.Update(ctx, raw)
++	if err != nil {
++		return err
++	}
++
++	// fetch and cache the branding config
++	branding, err := c.brandMgr.Get(ctx)
++	if err != nil {
++		logger.Errorf("Error occurred getting config: %v", err)
++		return err
++	}
++	swagbranding, err := ConvertBrandingConfigToSwagger(branding.Config)
++	if err != nil {
++		logger.Errorf("Error occurred converting config: %v", err)
++		return err
++	}
++
++	c.brandingCache.Lock()
++	defer c.brandingCache.Unlock()
++
++	c.brandingCache.config = swagbranding
++	logger.Infof("Successfully cached branding config on update")
++
++	return nil
++}
++
++func BrandingConfigToString(cfg *mdl.BrandingConfig) (string, error) {
++	if cfg == nil {
++		return "", errors.New("nil config passed")
++	}
++
++	data, err := json.Marshal(cfg) // marshals struct → []byte
++	if err != nil {
++		return "", fmt.Errorf("failed to marshal branding config: %v", err)
++	}
++
++	return string(data), nil // convert to string
++}
+
+ func (c *controller) GetInfo(ctx context.Context, opt Options) (*Data, error) {
+ 	logger := log.GetLogger(ctx)
+@@ -171,5 +383,67 @@ func (c *controller) GetCA(ctx context.Context) (io.ReadCloser, error) {
+
+ // NewController return an instance of controller
+ func NewController() Controller {
+-	return &controller{}
++	return &controller{
++		brandMgr: branding.Mgr,
++	}
++}
++
++var allowedURL = regexp.MustCompile(`^https?:\/\/`)
++var allowedText = regexp.MustCompile(`^[A-Za-z0-9\s.,:;!@#%&()_\-\/]*$`)
++
++// SanitizeBrandingJSON removes scripts, tags, and non-text/URL content
++func SanitizeBrandingJSON(raw json.RawMessage) json.RawMessage {
++	if len(raw) == 0 {
++		return raw
++	}
++
++	var data interface{}
++	_ = json.Unmarshal(raw, &data)
++
++	sanitized := sanitizeValue(data)
++
++	out, _ := json.Marshal(sanitized)
++	return json.RawMessage(out)
++}
++
++func sanitizeValue(v interface{}) interface{} {
++	switch val := v.(type) {
++
++	case map[string]interface{}:
++		cleaned := map[string]interface{}{}
++		for k, v2 := range val {
++			cleaned[k] = sanitizeValue(v2) // recursive
++		}
++		return cleaned
++
++	case []interface{}:
++		for i, v2 := range val {
++			val[i] = sanitizeValue(v2)
++		}
++		return val
++
++	case string:
++		// Remove potential script tags and JS payloads
++		lower := strings.ToLower(val)
++		if strings.Contains(lower, "<script") || strings.Contains(lower, "javascript:") {
++			return "" // strip dangerous content
++		}
++
++		// Allow URLs
++		if allowedURL.MatchString(val) {
++			return val
++		}
++
++		// Allow only safe text
++		if allowedText.MatchString(val) {
++			return val
++		}
++
++		// otherwise drop it
++		return ""
++
++	default:
++		// For non-text values like numbers, bools — drop everything to be safe
++		return nil
++	}
+ }
+diff --git a/src/pkg/branding/dao/dao.go b/src/pkg/branding/dao/dao.go
+new file mode 100644
+index 000000000..7dbc540b0
+--- /dev/null
++++ b/src/pkg/branding/dao/dao.go
+@@ -0,0 +1,66 @@
++package dao
++
++import (
++	"context"
++	"time"
++
++	"github.com/goharbor/harbor/src/lib/log"
++	"github.com/goharbor/harbor/src/lib/orm"
++	model "github.com/goharbor/harbor/src/pkg/branding/models"
++	// "github.com/goharbor/harbor/src/server/v2.0/models"
++)
++
++// DAO defines the interface to access the robot data model
++type DAO interface {
++	// Get ...
++	Get(ctx context.Context) (*model.Branding, error)
++
++	// Update ...
++	Update(ctx context.Context, branding string) error
++}
++
++// New creates a default implementation for Dao
++func New() DAO {
++	return &dao{}
++}
++
++type dao struct{}
++
++func (d *dao) Get(ctx context.Context) (*model.Branding, error) {
++	ormer, err := orm.FromContext(ctx)
++	if err != nil {
++		return nil, err
++	}
++	b := model.Branding{ID: 1} // we always fetch the only row
++	err = ormer.Read(&b)
++	if err != nil {
++		return nil, err
++	}
++	log.Debugf("fetched branding from DB")
++	return &b, nil
++}
++
++func (d *dao) Update(ctx context.Context, params string) error {
++	ormer, err := orm.FromContext(ctx)
++	if err != nil {
++		return err
++	}
++
++	branding := &model.Branding{
++		ID:         int64(1),
++		Config:     params,
++		UpdateTime: time.Now(),
++	}
++
++	// check if row exists
++	existing := &model.Branding{ID: int64(1)}
++	err = ormer.Read(existing)
++
++	if err == orm.ErrNoRows {
++		_, err = ormer.Insert(branding)
++	} else {
++		_, err = ormer.Update(branding, "Config", "UpdateTime")
++	}
++
++	return err
++}
+diff --git a/src/pkg/branding/manager.go b/src/pkg/branding/manager.go
+new file mode 100644
+index 000000000..27e048290
+--- /dev/null
++++ b/src/pkg/branding/manager.go
+@@ -0,0 +1,59 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package branding
++
++import (
++	"context"
++
++	"github.com/goharbor/harbor/src/pkg/branding/dao"
++	model "github.com/goharbor/harbor/src/pkg/branding/models"
++)
++
++var (
++	// Mgr is a global variable for the default robot account manager implementation
++	Mgr = NewManager()
++)
++
++// Manager ...
++type Manager interface {
++	// Get ...
++	Get(ctx context.Context) (*model.Branding, error)
++
++	// Count returns the total count of robots according to the query
++	Update(ctx context.Context, params string) (err error)
++}
++
++var _ Manager = &manager{}
++
++type manager struct {
++	dao dao.DAO
++}
++
++// NewManager return a new instance of defaultRobotManager
++func NewManager() Manager {
++	return &manager{
++		dao: dao.New(),
++	}
++}
++
++// Get ...
++func (m *manager) Get(ctx context.Context) (*model.Branding, error) {
++	return m.dao.Get(ctx)
++}
++
++// Update ...
++func (m *manager) Update(ctx context.Context, params string) (err error) {
++	return m.dao.Update(ctx, params)
++}
+diff --git a/src/pkg/branding/models/branding.go b/src/pkg/branding/models/branding.go
+new file mode 100644
+index 000000000..f21481801
+--- /dev/null
++++ b/src/pkg/branding/models/branding.go
+@@ -0,0 +1,56 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package model
++
++import (
++	"time"
++
++	"github.com/beego/beego/v2/client/orm"
++
++	"github.com/goharbor/harbor/src/lib/errors"
++)
++
++func init() {
++	orm.RegisterModel(&Branding{})
++}
++
++// Robot holds the details of a robot.
++type Branding struct {
++	ID         int64     `orm:"pk;auto;column(id)" json:"id"`
++	Config     string    `orm:"type(text);column(config)" json:"config"`
++	UpdateTime time.Time `orm:"column(update_time);auto_now" json:"update_time"`
++}
++
++// TableName ...
++func (r *Branding) TableName() string {
++	return "branding"
++}
++
++// FromJSON parses branding from json data
++func (b *Branding) FromJSON(jsonData string) error {
++	if jsonData == "" {
++		return errors.New("empty json data to parse")
++	}
++	b.Config = jsonData // ← fixed
++	return nil
++}
++
++// Convert branding config to JSON string
++func (b *Branding) ToJSON() (string, error) {
++	if len(b.Config) == 0 {
++		return "", errors.New("no config to marshal")
++	}
++	return string(b.Config), nil
++}
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.html b/src/portal/src/app/account/sign-in/sign-in.component.html
-index 5108d4316..29a25e286 100644
+index 5108d4316..8f5acbb70 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.html
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.html
-@@ -178,7 +178,7 @@
-                     }">
-                     <a
-                         rel="noopener noreferrer"
--                        href="https://github.com/goharbor/harbor"
-+                        href="https://container-registry.com/"
-                         target="_blank"
-                         >{{ 'BUTTON.MORE_INFO' | translate }}</a
-                     >
+@@ -6,7 +6,7 @@
+         class="login-wrapper"
+         [ngStyle]="{
+             'background-image': customLoginBgImg
+-                ? 'url(/images/' + customLoginBgImg + ')'
++                ? 'url(' + customLoginBgImg + ')'
+                 : ''
+         }">
+         <form #signInForm="ngForm" class="login">
+diff --git a/src/portal/src/app/account/sign-in/sign-in.component.ts b/src/portal/src/app/account/sign-in/sign-in.component.ts
+index 3cb75368e..1f8061433 100644
+--- a/src/portal/src/app/account/sign-in/sign-in.component.ts
++++ b/src/portal/src/app/account/sign-in/sign-in.component.ts
+@@ -38,6 +38,7 @@ import {
+ import { SignInCredential } from './sign-in-credential';
+ import { UserPermissionService } from '../../shared/services';
+ import { finalize } from 'rxjs/operators';
++import { SysteminfoService } from 'ng-swagger-gen/services';
+
+ // Define status flags for signing in states
+ export const signInStatusNormal = 0;
+@@ -89,16 +90,23 @@ export class SignInComponent implements AfterViewChecked, OnInit {
+     ) {}
+
+     ngOnInit(): void {
+-        // custom skin
+-        let customSkinObj = this.skinableConfig.getSkinConfig();
+-        if (customSkinObj) {
+-            if (customSkinObj.loginBgImg) {
+-                this.customLoginBgImg = customSkinObj.loginBgImg;
+-            }
+-            if (customSkinObj.loginTitle) {
+-                this.customAppTitle = customSkinObj.loginTitle;
+-            }
+-        }
++        this.skinableConfig.getBrandingInfo(false).subscribe({
++            next: branding => {
++                console.log('branding data 1 changing login bgimg', branding);
++                // use branding.product.name instead of skinableConfig
++                if (branding?.loginBgImg) {
++                    this.customLoginBgImg = branding.loginBgImg;
++                }
++                if (branding?.loginTitle) {
++                    this.customAppTitle = branding.loginTitle;
++                }
++            },
++            error: () => {
++                // fallback on error
++                console.error('branding info load failed');
++            },
++        });
++
+         this.route.queryParams.subscribe(params => {
+             this.redirectUrl = params['redirect_url'] || '';
+             let isSignUp = params['sign_up'] || '';
+diff --git a/src/portal/src/app/app.component.ts b/src/portal/src/app/app.component.ts
+index 07c3ce543..5f457b353 100644
+--- a/src/portal/src/app/app.component.ts
++++ b/src/portal/src/app/app.component.ts
+@@ -36,6 +36,7 @@ import {
+     JobServiceDashboardHealthCheckService,
+ } from './base/left-side-nav/job-service-dashboard/job-service-dashboard-health-check.service';
+ import { SessionService } from './shared/services/session.service';
++import { SysteminfoService } from 'ng-swagger-gen/services';
+
+ @Component({
+     selector: 'harbor-app',
+@@ -59,18 +60,23 @@ export class AppComponent implements OnInit, OnDestroy {
+         // Override page title
+         let key: string = 'APP_TITLE.HARBOR';
+         translate.get(key).subscribe((res: string) => {
+-            const customSkinData: CustomStyle =
+-                this.skinableConfig.getSkinConfig();
+-            if (
+-                customSkinData &&
+-                customSkinData.product &&
+-                customSkinData.product.name
+-            ) {
+-                this.titleService.setTitle(customSkinData.product.name);
+-                this.skinableConfig.setTitleIcon();
+-            } else {
+-                this.titleService.setTitle(res);
+-            }
++            // Fetch branding from API
++            this.skinableConfig.getBrandingInfo(true).subscribe({
++                next: branding => {
++                    console.log('branding data 2 main app component', branding);
++                    // use branding.product.name instead of skinableConfig
++                    if (branding?.product?.name) {
++                        this.titleService.setTitle(branding.product.name);
++                        this.skinableConfig.setTitleIcon(branding.product.logo); // unchanged
++                    } else {
++                        this.titleService.setTitle(res); // fallback
++                    }
++                },
++                error: () => {
++                    // fallback on error
++                    this.titleService.setTitle(res);
++                },
++            });
+         });
+         this.setTheme();
+     }
+diff --git a/src/portal/src/app/app.module.ts b/src/portal/src/app/app.module.ts
+index ba80bcaeb..183e3dbd8 100644
+--- a/src/portal/src/app/app.module.ts
++++ b/src/portal/src/app/app.module.ts
+@@ -40,6 +40,7 @@ import {
+ import { ErrorHandler } from './shared/units/error-handler';
+ import { MessageHandlerService } from './shared/services/message-handler.service';
+ import { HarborTranslateLoaderService } from './services/harbor-translate-loader.service';
++import { SysteminfoService } from 'ng-swagger-gen/services';
+
+ function initConfig(
+     configService: AppConfigService,
+@@ -80,10 +81,11 @@ class MyMissingTranslationHandler implements MissingTranslationHandler {
+     providers: [
+         AppConfigService,
+         SkinableConfig,
++        SysteminfoService,
+         {
+             provide: APP_INITIALIZER,
+             useFactory: initConfig,
+-            deps: [AppConfigService, SkinableConfig],
++            deps: [AppConfigService, SkinableConfig, SysteminfoService],
+             multi: true,
+         },
+         {
+diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html
+new file mode 100644
+index 000000000..87d6302e4
+--- /dev/null
++++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html
+@@ -0,0 +1,41 @@
++<form #brandingForm="ngForm" class="clr-form clr-form-horizontal">
++    <section>
++        <div class="clr-form-control">
++            <label class="clr-control-label">{{
++                'BRANDING.TITLE' | translate
++            }}</label>
++            <div class="clr-textarea-wrapper">
++                <textarea
++                    id="branding"
++                    placeholder="{{ 'BRANDING.MESSAGE' | translate }}"
++                    autocomplete="off"
++                    class="clr-textarea"
++                    [(ngModel)]="brandingConfig"
++                    [ngModelOptions]="{ standalone: true }"
++                    rows="20"
++                    cols="80"
++                    [disabled]="
++                        !currentConfig.banner_message.editable
++                    "></textarea>
++            </div>
++        </div>
++    </section>
++</form>
++<div>
++    <button
++        type="button"
++        id="config_system_save"
++        class="btn btn-primary"
++        (click)="save()"
++        [disabled]="!isValid() || !hasChanges() || inProgress">
++        {{ 'BUTTON.SAVE' | translate }}
++    </button>
++    <button
++        type="button"
++        id="config_system_cancel"
++        class="btn btn-outline"
++        (click)="cancel()"
++        [disabled]="!isValid() || !hasChanges() || inProgress">
++        {{ 'BUTTON.CANCEL' | translate }}
++    </button>
++</div>
+diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss
+new file mode 100644
+index 000000000..e69de29bb
+diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
+new file mode 100644
+index 000000000..059161f81
+--- /dev/null
++++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
+@@ -0,0 +1,13 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
+diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
+new file mode 100644
+index 000000000..3d15c4177
+--- /dev/null
++++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
+@@ -0,0 +1,214 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++import {
++    AfterViewChecked,
++    ChangeDetectorRef,
++    Component,
++    OnInit,
++    ViewChild,
++} from '@angular/core';
++import { NgForm } from '@angular/forms';
++import {
++    BannerMessage,
++    BannerMessageI18nMap,
++    BannerMessageType,
++    Configuration,
++} from '../config';
++import {
++    clone,
++    CURRENT_BASE_HREF,
++    getChanges,
++    isEmpty,
++} from '../../../../shared/units/utils';
++import { ConfigService } from '../config.service';
++import { AppConfigService } from '../../../../services/app-config.service';
++import { finalize } from 'rxjs/operators';
++import { MessageHandlerService } from '../../../../shared/services/message-handler.service';
++import {
++    EventService,
++    HarborEvent,
++} from '../../../../services/event-service/event.service';
++import { Subscription } from 'rxjs';
++import { AuditlogService, SysteminfoService } from 'ng-swagger-gen/services';
++import { AuditLogEventType, BrandingConfig } from 'ng-swagger-gen/models';
++import { SkinableConfig } from 'src/app/services/skinable-config.service';
++
++@Component({
++    selector: 'branding',
++    templateUrl: './branding.component.html',
++    styleUrls: ['./branding.component.scss'],
++})
++export class BrandingComponent implements OnInit, AfterViewChecked {
++    onGoing = false;
++    loading = false;
++
++    get currentConfig(): Configuration {
++        return this.conf.getConfig();
++    }
++
++    set currentConfig(cfg: Configuration) {
++        this.conf.setConfig(cfg);
++    }
++
++    brandingConfig: string;
++    // the copy of bannerMessage
++    brandingConfigCopy: string;
++    // bannerRefreshSub: Subscription;
++    currentDate: Date = new Date();
++    logEventTypes: Record<string, string>[] = [];
++    selectedLogEventTypes: string[] = clone([]);
++    @ViewChild('brandingForm') brandingForm: NgForm;
++
++    constructor(
++        private appConfigService: AppConfigService,
++        private errorHandler: MessageHandlerService,
++        private conf: ConfigService,
++        private changeDetectorRef: ChangeDetectorRef,
++        private systeminfoService: SysteminfoService,
++        private skinableConfig: SkinableConfig
++    ) {
++        return;
++    }
++
++    ngOnInit() {
++        this.getAndSetBrandingConfig();
++    }
++
++    ngAfterViewChecked() {
++        this.changeDetectorRef.detectChanges();
++    }
++
++    getAndSetBrandingConfig() {
++        this.skinableConfig.getBrandingInfo(false).subscribe({
++            next: branding => {
++                console.log('branding data in admin fetch', branding);
++                // use branding.product.name instead of skinableConfig
++                if (branding) {
++                    this.brandingConfig = JSON.stringify(branding, null, 2);
++                    this.brandingConfigCopy = JSON.stringify(branding, null, 2);
++                }
++            },
++            error: () => {
++                // fallback on error
++                console.error('branding config load failed in admin fetch');
++            },
++        });
++    }
++
++    public isValid(): boolean {
++        return this.brandingForm && this.brandingForm.valid;
++    }
++
++    public hasChanges(): boolean {
++        return this.hasBrandingChanged();
++    }
++
++    private sortKeysDeep(obj: any): any {
++        if (Array.isArray(obj)) {
++            return obj.map(v => this.sortKeysDeep(v)); // ← sort values in array
++        } else if (obj !== null && typeof obj === 'object') {
++            return Object.keys(obj)
++                .sort() // ← sort keys at every level
++                .reduce((acc: any, key: string) => {
++                    acc[key] = this.sortKeysDeep(obj[key]); // ← recurse
++                    return acc;
++                }, {});
++        }
++        return obj; // primitive
++    }
++
++    // Utility function to deeply compare JSON objects
++    hasBrandingChanged(): boolean {
++        // parse both JSON values                           ← same as before
++        const oldConfig = JSON.parse(this.brandingConfigCopy || '{}');
++        const newConfig = JSON.parse(this.brandingConfig || '{}');
++
++        // deeply sort both configs
++        const oldSorted = this.sortKeysDeep(oldConfig);
++        const newSorted = this.sortKeysDeep(newConfig);
++
++        // compare normalized output
++        const oldStr = JSON.stringify(oldSorted);
++        const newStr = JSON.stringify(newSorted);
++
++        return oldStr !== newStr; // true if ANY nested change
++    }
++
++    disabled(prop: any): boolean {
++        return !(prop && prop.editable);
++    }
++
++    /**
++     *
++     * Save the changed values
++     *
++     * @memberOf ConfigurationComponent
++     */
++    public save(): void {
++        if (this.hasChanges()) {
++            var brandingconfig: BrandingConfig;
++            try {
++                // Parse JSON string safely and type it  ← changed
++                brandingconfig = JSON.parse(
++                    this.brandingConfig as string
++                ) as BrandingConfig;
++            } catch (e) {
++                console.error('Failed to parse brandingConfig', e); // ← added error handling
++            }
++
++            this.onGoing = true;
++            this.systeminfoService
++                .updateBrandingInfo(brandingconfig)
++                .subscribe({
++                    next: result => {
++                        this.getAndSetBrandingConfig();
++                        // Reload bootstrap option
++                        this.appConfigService.load().subscribe(
++                            () => {},
++                            error =>
++                                console.error(
++                                    'Failed to reload bootstrap option with error: ',
++                                    error
++                                )
++                        );
++                        this.errorHandler.info('CONFIG.SAVE_SUCCESS');
++                        // window.location.reload();
++                    },
++                    error: error => {
++                        this.errorHandler.error(error);
++                    },
++                });
++        }
++    }
++
++    public get inProgress(): boolean {
++        return this.onGoing || this.conf.getLoadingConfigStatus();
++    }
++
++    /**
++     *
++     * Discard current changes if have and reset
++     *
++     * @memberOf ConfigurationComponent
++     */
++    public cancel(): void {
++        // let changes = this.getChanges();
++        if (this.hasChanges()) {
++            this.conf.confirmUnsavedChanges('branding config');
++        } else {
++            // Invalid situation, should not come here
++            console.error('Nothing changed');
++        }
++    }
++}
+diff --git a/src/portal/src/app/base/left-side-nav/config/config.component.html b/src/portal/src/app/base/left-side-nav/config/config.component.html
+index b25eb825b..007f8562b 100644
+--- a/src/portal/src/app/base/left-side-nav/config/config.component.html
++++ b/src/portal/src/app/base/left-side-nav/config/config.component.html
+@@ -37,6 +37,16 @@
+                     {{ 'CONFIG.SYSTEM' | translate }}
+                 </button>
+             </li>
++            <li role="presentation" class="nav-item">
++                <button
++                    id="config-system"
++                    class="btn btn-link nav-link"
++                    type="button"
++                    routerLink="branding"
++                    routerLinkActive="active">
++                    {{ 'CONFIG.BRANDING' | translate }}
++                </button>
++            </li>
+         </ul>
+     </div>
+ </div>
+diff --git a/src/portal/src/app/base/left-side-nav/config/config.module.ts b/src/portal/src/app/base/left-side-nav/config/config.module.ts
+index b8635a2df..2a9acabcc 100644
+--- a/src/portal/src/app/base/left-side-nav/config/config.module.ts
++++ b/src/portal/src/app/base/left-side-nav/config/config.module.ts
+@@ -20,6 +20,8 @@ import { SystemSettingsComponent } from './system/system-settings.component';
+ import { RouterModule, Routes } from '@angular/router';
+ import { ConfigService } from './config.service';
+ import { SecurityComponent } from './security/security.component';
++import { BrandingComponent } from './branding/branding.component';
++import { SysteminfoService } from 'ng-swagger-gen/services';
+
+ const routes: Routes = [
+     {
+@@ -38,6 +40,10 @@ const routes: Routes = [
+                 path: 'setting',
+                 component: SystemSettingsComponent,
+             },
++            {
++                path: 'branding',
++                component: BrandingComponent,
++            },
+             {
+                 path: '',
+                 redirectTo: 'auth',
+@@ -52,8 +58,9 @@ const routes: Routes = [
+         ConfigurationComponent,
+         ConfigurationAuthComponent,
+         SystemSettingsComponent,
++        BrandingComponent,
+         SecurityComponent,
+     ],
+-    providers: [ConfigService],
++    providers: [ConfigService, SysteminfoService],
+ })
+ export class ConfigurationModule {}
+diff --git a/src/portal/src/app/services/skinable-config.service.ts b/src/portal/src/app/services/skinable-config.service.ts
+index 62c248d9d..00687b035 100644
+--- a/src/portal/src/app/services/skinable-config.service.ts
++++ b/src/portal/src/app/services/skinable-config.service.ts
+@@ -13,16 +13,20 @@
+ // limitations under the License.
+ import { Inject, Injectable } from '@angular/core';
+ import { HttpClient } from '@angular/common/http';
+-import { map, catchError } from 'rxjs/operators';
+-import { Observable, throwError as observableThrowError } from 'rxjs';
++import { map, catchError, shareReplay, tap } from 'rxjs/operators';
++import { Observable, throwError as observableThrowError, of } from 'rxjs';
+ import { CustomStyle } from './theme';
+ import { DOCUMENT } from '@angular/common';
+ import { environment } from 'src/environments/environment';
++import { BrandingConfig } from 'ng-swagger-gen/models';
++import { SysteminfoService } from 'ng-swagger-gen/services';
+ @Injectable()
+ export class SkinableConfig {
+     private customSkinData: CustomStyle;
++    private BrandingInfo: BrandingConfig;
+     constructor(
+         private http: HttpClient,
++        private systeminfoService: SysteminfoService,
+         @Inject(DOCUMENT) private document: Document
+     ) {}
+
+@@ -40,19 +44,73 @@ export class SkinableConfig {
+             );
+     }
+
++    private brandingCache$: Observable<any> | null = null;
++    public getBrandingInfo(refetch: boolean): Observable<any> {
++        if (!refetch) {
++            if (this.brandingCache$) {
++                return this.brandingCache$;
++            }
++            const brandingCache = localStorage.getItem('branding');
++            if (brandingCache.length > 0) {
++                try {
++                    const parsedData = JSON.parse(brandingCache);
++
++                    // Important: Sync internal variable so getBrandingConfig() works immediately
++                    this.BrandingInfo = parsedData;
++
++                    // Create a stream from the LS data and assign it to brandingCache$
++                    // This ensures future calls in this session hit "Step 1" instead of parsing LS again.
++                    this.brandingCache$ = of(parsedData);
++
++                    return this.brandingCache$;
++                } catch (e) {
++                    console.warn(
++                        'Localstorage branding data corrupted, clearing it.',
++                        e
++                    );
++                    localStorage.removeItem('branding');
++                }
++            }
++        }
++        // If not cached → fetch once and store  ← changed
++        this.brandingCache$ = this.systeminfoService.getBrandingInfo().pipe(
++            tap(branding => {
++                console.log('Branding fetched from API');
++                this.BrandingInfo = branding;
++                localStorage.setItem('branding', JSON.stringify(branding));
++            }),
++            // Share the result with all subscribers and cache the last emitted value (1)
++            shareReplay(1),
++            catchError(err => {
++                console.error('Branding info load failed', err);
++                // If it fails, clear the cache$ so we can try again next time
++                this.brandingCache$ = null;
++                return observableThrowError(err);
++            })
++        );
++        // Return shared cached observable  ← changed
++        return this.brandingCache$;
++    }
++
+     public getSkinConfig() {
+         return this.customSkinData;
+     }
+
+-    public setTitleIcon() {
+-        if (
+-            this.customSkinData &&
+-            this.customSkinData.product &&
+-            this.customSkinData.product.logo
+-        ) {
+-            const titleIcon: HTMLLinkElement =
+-                this.document.querySelector('link');
+-            titleIcon.href = `images/${this.customSkinData.product.logo}`;
++    public getBrandingConfig() {
++        return this.BrandingInfo;
++    }
++
++    public setTitleIcon(logoUrl: string) {
++        console.log('logoUrl', logoUrl);
++        if (!logoUrl) {
++            return; // no logo → do nothing
++        }
++
++        // find the favicon link element
++        const titleIcon: HTMLLinkElement = this.document.querySelector('link');
++
++        if (titleIcon) {
++            titleIcon.href = logoUrl;
+         }
+     }
+ }
+diff --git a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
+index 7823337e3..bc2cc9c54 100644
+--- a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
++++ b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
+@@ -5,11 +5,7 @@
+     <div class="modal-body dialog-body">
+         <div class="harbor-logo-black">
+             <img
+-                [src]="
+-                    customLogo
+-                        ? 'images/' + customLogo
+-                        : 'images/harbor-logo.svg'
+-                "
++                [src]="customLogo || 'images/harbor-logo.svg'"
+                 class="harbor-icon" />
+         </div>
+         <div class="content" tabindex="1">
+diff --git a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
+index c920c9d7f..a4e100dd0 100644
+--- a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
++++ b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
+@@ -34,14 +34,29 @@ export class AboutDialogComponent implements OnInit {
+
+     ngOnInit(): void {
+         // custom skin
+-        let customSkinObj = this.skinableConfig.getSkinConfig();
+-        if (customSkinObj) {
+-            if (customSkinObj.product) {
+-                this.customLogo = customSkinObj.product.logo;
+-                this.customName = customSkinObj.product.name;
+-                this.customIntroduction = customSkinObj.product.introduction;
+-            }
+-        }
++        this.skinableConfig.getBrandingInfo(false).subscribe({
++            next: branding => {
++                console.log('branding data 5 about component', branding);
++                const customSkinObj = branding;
++                if (customSkinObj) {
++                    if (customSkinObj.product?.logo) {
++                        console.log(
++                            'customSkinObj logo',
++                            customSkinObj.product.logo
++                        );
++                        this.customLogo = customSkinObj.product.logo;
++                        this.customName = customSkinObj.product.name;
++                        this.customIntroduction =
++                            customSkinObj.product.introduction;
++                    }
++                }
++            },
++            error: () => {
++                console.error(
++                    'branding info load failed in the about component'
++                );
++            },
++        });
+     }
+
+     public get version(): string {
+diff --git a/src/portal/src/app/shared/components/global-search/global-search.component.ts b/src/portal/src/app/shared/components/global-search/global-search.component.ts
+index 049dce8d3..a6b2697f2 100644
+--- a/src/portal/src/app/shared/components/global-search/global-search.component.ts
++++ b/src/portal/src/app/shared/components/global-search/global-search.component.ts
+@@ -33,6 +33,7 @@ import { AppConfigService } from '../../../services/app-config.service';
+ import { TranslateService } from '@ngx-translate/core';
+ import { SkinableConfig } from '../../../services/skinable-config.service';
+ import { Location } from '@angular/common';
++import { SysteminfoService } from 'ng-swagger-gen/services';
+
+ const deBounceTime = 500; // ms
+ const SEARCH_KEY: string = 'globalSearch';
+@@ -65,29 +66,63 @@ export class GlobalSearchComponent implements OnInit, OnDestroy {
+     ) {}
+
+     ngOnInit(): void {
++        this.skinableConfig.getBrandingInfo(false).subscribe({
++            next: branding => {
++                console.log('branding data 3', branding);
++                // use branding.product.name instead of skinableConfig
++                if (branding?.product?.name) {
++                    this.translate
++                        .get('GLOBAL_SEARCH.PLACEHOLDER', {
++                            param: branding.product.name,
++                        })
++                        .subscribe(res => {
++                            // Placeholder text
++                            this.placeholderText = res;
++                        });
++                } else {
++                    this.translate
++                        .get('GLOBAL_SEARCH.PLACEHOLDER', { param: 'Harbor' })
++                        .subscribe(res => {
++                            // Placeholder text
++                            this.placeholderText = res;
++                        });
++                }
++            },
++            error: () => {
++                console.error('branding info load failed in the global search');
++                // fallback on error
++                this.translate
++                    .get('GLOBAL_SEARCH.PLACEHOLDER', { param: 'Harbor' })
++                    .subscribe(res => {
++                        // Placeholder text
++                        this.placeholderText = res;
++                    });
++            },
++        });
++
+         // custom skin
+-        let customSkinObj = this.skinableConfig.getSkinConfig();
+-        if (
+-            customSkinObj &&
+-            customSkinObj.product &&
+-            customSkinObj.product.name
+-        ) {
+-            this.translate
+-                .get('GLOBAL_SEARCH.PLACEHOLDER', {
+-                    param: customSkinObj.product.name,
+-                })
+-                .subscribe(res => {
+-                    // Placeholder text
+-                    this.placeholderText = res;
+-                });
+-        } else {
+-            this.translate
+-                .get('GLOBAL_SEARCH.PLACEHOLDER', { param: 'Harbor' })
+-                .subscribe(res => {
+-                    // Placeholder text
+-                    this.placeholderText = res;
+-                });
+-        }
++        // let customSkinObj = this.skinableConfig.getSkinConfig();
++        // if (
++        //     customSkinObj &&
++        //     customSkinObj.product &&
++        //     customSkinObj.product.name
++        // ) {
++        //     this.translate
++        //         .get('GLOBAL_SEARCH.PLACEHOLDER', {
++        //             param: customSkinObj.product.name,
++        //         })
++        //         .subscribe(res => {
++        //             // Placeholder text
++        //             this.placeholderText = res;
++        //         });
++        // } else {
++        //     this.translate
++        //         .get('GLOBAL_SEARCH.PLACEHOLDER', { param: 'Harbor' })
++        //         .subscribe(res => {
++        //             // Placeholder text
++        //             this.placeholderText = res;
++        //         });
++        // }
+
+         this.searchSub = this.searchTerms
+             .pipe(debounceTime(deBounceTime))
+diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.html b/src/portal/src/app/shared/components/navigator/navigator.component.html
+index 5f4e3a252..b218ddbb1 100644
+--- a/src/portal/src/app/shared/components/navigator/navigator.component.html
++++ b/src/portal/src/app/shared/components/navigator/navigator.component.html
+@@ -2,15 +2,15 @@
+     <div class="branding">
+         <a href="javascript:void(0)" class="nav-link" (click)="homeAction()">
+             <img
+-                [attr.src]="'images/' + customStyle?.product?.logo"
+-                *ngIf="customStyle?.product?.logo; else elseBlock"
++                [src]="BrandingInfo?.product?.logo"
++                *ngIf="BrandingInfo?.product?.logo; else elseBlock"
+                 class="headerLogo" />
+             <ng-template #elseBlock
+                 ><img [src]="'images/harbor-logo.svg'" class="harbor-logo"
+             /></ng-template>
+             <span class="title">{{
+-                customStyle?.product?.name
+-                    ? customStyle?.product?.name
++                BrandingInfo?.product?.name
++                    ? BrandingInfo?.product?.name
+                     : (appTitle | translate)
+             }}</span>
+         </a>
+diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.ts b/src/portal/src/app/shared/components/navigator/navigator.component.ts
+index c61ea8f03..d9a14eaed 100644
+--- a/src/portal/src/app/shared/components/navigator/navigator.component.ts
++++ b/src/portal/src/app/shared/components/navigator/navigator.component.ts
+@@ -46,6 +46,8 @@ import { map } from 'rxjs/operators';
+ import { forkJoin, Observable } from 'rxjs';
+ import { ClrCommonStringsService } from '@clr/angular';
+ import { signInStatusError } from '../../../account/sign-in/sign-in.component';
++import { SysteminfoService } from 'ng-swagger-gen/services';
++import { BrandingConfig } from 'ng-swagger-gen/models';
+
+ @Component({
+     selector: 'navigator',
+@@ -61,7 +63,7 @@ export class NavigatorComponent implements OnInit {
+     selectedLang: SupportedLanguage = DeFaultLang;
+     selectedDatetimeRendering: DatetimeRendering = DefaultDatetimeRendering;
+     appTitle: string = 'APP_TITLE.HARBOR';
+-    customStyle: CustomStyle;
++    BrandingInfo: BrandingConfig;
+     isCoreServiceAvailable: boolean = true;
+     constructor(
+         private session: SessionService,
+@@ -77,7 +79,20 @@ export class NavigatorComponent implements OnInit {
+
+     ngOnInit(): void {
+         // custom skin
+-        this.customStyle = this.skinableConfig.getSkinConfig();
++        // this.BrandingInfo = this.skinableConfig.getBrandingConfig();
++
++        this.skinableConfig.getBrandingInfo(false).subscribe({
++            next: branding => {
++                console.log('branding data 6 navigator component', branding);
++                this.BrandingInfo = branding;
++            },
++            error: () => {
++                console.error(
++                    'branding info load failed in the about component'
++                );
++            },
++        });
++
+         this.selectedLang = this.translate.currentLang as SupportedLanguage;
+         if (this.selectedLang) {
+             registerLocaleData(
+@@ -286,15 +301,15 @@ export class NavigatorComponent implements OnInit {
+
+     getBgColor(): string {
+         if (
+-            this.customStyle &&
+-            this.customStyle.headerBgColor &&
++            this.BrandingInfo &&
++            this.BrandingInfo.headerBgColor &&
+             localStorage
+         ) {
+             if (localStorage.getItem(HAS_STYLE_MODE) === StyleMode.LIGHT) {
+-                return `background-color:${this.customStyle.headerBgColor.lightMode} !important`;
++                return `background-color:${this.BrandingInfo.headerBgColor.lightMode} !important`;
+             }
+             if (localStorage.getItem(HAS_STYLE_MODE) === StyleMode.DARK) {
+-                return `background-color:${this.customStyle.headerBgColor.darkMode} !important`;
++                return `background-color:${this.BrandingInfo.headerBgColor.darkMode} !important`;
+             }
+         }
+         return null;
+diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
+index 9a8e11cba..2467998e2 100644
+--- a/src/portal/src/i18n/lang/en-us-lang.json
++++ b/src/portal/src/i18n/lang/en-us-lang.json
+@@ -770,6 +770,7 @@
+         "REPOSITORY": "Repository",
+         "REPO_READ_ONLY": "Repository Read Only",
+         "SYSTEM": "System Settings",
++        "BRANDING": "Branding",
+         "PROJECT_QUOTAS": "Project Quotas",
+         "VULNERABILITY": "Vulnerability",
+         "GC": "Garbage Collection",
+@@ -1880,6 +1881,10 @@
+         "DATE_PICKER_SELECT_YEAR_TEXT": "Select year, the current year is {CALENDAR_YEAR}",
+         "DATE_PICKER_SELECTED_LABEL": "{FULL_DATE} - Selected"
+     },
++    "BRANDING": {
++        "TITLE": "Branding",
++        "MESSAGE": "{\r\n  \"headerBgColor\": {\r\n    \"darkMode\": \"#0d1117\",\r\n    \"lightMode\": \"#ffffff\"\r\n  },\r\n  \"loginBgImg\": \"https:\/\/example.com\/bg.png\",\r\n  \"loginTitle\": \"Welcome to Harbor\",\r\n  \"product\": {\r\n    \"name\": \"Harbor Enterprise\",\r\n    \"logo\": \"https:\/\/example.com\/logo.png\",\r\n    \"introduction\": \"Your trusted cloud-native registry\"\r\n  }\r\n}"
++    },
+     "BANNER_MESSAGE": {
+         "BANNER_MESSAGE": "Banner Message",
+         "MESSAGE_TYPE": "Message type",
+diff --git a/src/server/v2.0/handler/systeminfo.go b/src/server/v2.0/handler/systeminfo.go
+index 6c673e08c..834f60fe2 100644
+--- a/src/server/v2.0/handler/systeminfo.go
++++ b/src/server/v2.0/handler/systeminfo.go
+@@ -51,6 +51,47 @@ func (s *sysInfoAPI) GetSystemInfo(ctx context.Context, _ systeminfo.GetSystemIn
+ 	return systeminfo.NewGetSystemInfoOK().WithPayload(s.convertInfo(data))
+ }
+
++func (s *sysInfoAPI) GetBrandingInfo(ctx context.Context, _ systeminfo.GetBrandingInfoParams) middleware.Responder {
++	data, err := s.ctl.GetBrandingConfig(ctx)
++	if err != nil {
++		return s.SendError(ctx, err)
++	}
++	return systeminfo.NewGetBrandingInfoOK().WithPayload(data)
++}
++
++func (s *sysInfoAPI) UpdateBrandingInfo(ctx context.Context, params systeminfo.UpdateBrandingInfoParams) middleware.Responder {
++	var err error
++	sc, ok := security.FromContext(ctx)
++	if ok && sc.IsAuthenticated() && sc.IsSysAdmin() {
++		err = s.ctl.UpdateBrandingConfig(ctx, params.BrandingConfig)
++		if err != nil {
++			return s.SendError(ctx, err)
++		}
++
++		return systeminfo.NewUpdateBrandingInfoOK()
++	} else {
++		return systeminfo.NewUpdateBrandingInfoUnauthorized()
++	}
++	// return systeminfo.NewGetSystemInfoOK().WithPayload(s.convertInfo(data))
++
++	// something like the below we can make for the above
++
++	// if err := g.RequireSystemAccess(ctx, rbac.ActionCreate, rbac.ResourceGarbageCollection); err != nil {
++	// 	return g.SendError(ctx, err)
++	// }
++	// id, err := g.kick(ctx, params.Schedule.Schedule.Type, params.Schedule.Schedule.Cron, params.Schedule.Parameters)
++	// if err != nil {
++	// 	return g.SendError(ctx, err)
++	// }
++	// // replace the /api/v2.0/system/gc/schedule/{id} to /api/v2.0/system/gc/{id}
++	// lastSlashIndex := strings.LastIndex(params.HTTPRequest.URL.Path, "/")
++	// if lastSlashIndex != -1 {
++	// 	location := fmt.Sprintf("%s/%d", params.HTTPRequest.URL.Path[:lastSlashIndex], id)
++	// 	return operation.NewCreateGCScheduleCreated().WithLocation(location)
++	// }
++	// return operation.NewCreateGCScheduleCreated()
++}
++
+ func (s *sysInfoAPI) GetCert(ctx context.Context, _ systeminfo.GetCertParams) middleware.Responder {
+ 	f, err := s.ctl.GetCA(ctx)
+ 	if err != nil {
