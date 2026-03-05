@@ -2,32 +2,31 @@ feat(replication): add SFTP storage adapter
 
 From: bupd <bupdprasanth@gmail.com>
 
-
 ---
- src/controller/registry/controller.go              |    2 
- .../replication/transfer/image/transfer.go         |    4 
- src/go.mod                                         |    3 
- src/go.sum                                         |    4 
- src/jobservice/job/impl/replication/replication.go |    2 
- src/lib/endpoint.go                                |   20 +
- src/lib/endpoint_test.go                           |   10 
- src/pkg/p2p/preheat/provider/dragonfly.go          |    2 
- src/pkg/p2p/preheat/provider/kraken.go             |    2 
- src/pkg/reg/adapter/storage/adapter.go             |  553 ++++++++++++++++++++
- src/pkg/reg/adapter/storage/drivers/s3/driver.go   |   18 +
- src/pkg/reg/adapter/storage/drivers/sftp/driver.go |  383 ++++++++++++++
- .../reg/adapter/storage/drivers/sftp/fileinfo.go   |   76 +++
- .../reg/adapter/storage/drivers/sftp/filewriter.go |   76 +++
- .../reg/adapter/storage/drivers/sftp/pool/net.go   |   33 +
- .../reg/adapter/storage/drivers/sftp/pool/pool.go  |  182 +++++++
- .../reg/adapter/storage/drivers/sftp/pool/ssh.go   |  224 ++++++++
- src/pkg/reg/adapter/storage/health/health.go       |    7 
- src/pkg/reg/adapter/storage/s3_factory.go          |  124 ++++
- src/pkg/reg/adapter/storage/sftp_factory.go        |   57 ++
- src/pkg/reg/manager.go                             |    2 
- src/pkg/reg/model/registry.go                      |    9 
- src/pkg/scan/dao/scanner/model.go                  |    2 
- src/server/v2.0/handler/registry.go                |    2 
+ src/controller/registry/controller.go         |   2 +-
+ .../replication/transfer/image/transfer.go    |   4 +-
+ src/go.mod                                    |   3 +
+ src/go.sum                                    |   4 +
+ .../job/impl/replication/replication.go       |   2 +
+ src/lib/endpoint.go                           |  20 +-
+ src/lib/endpoint_test.go                      |  10 +-
+ src/pkg/p2p/preheat/provider/dragonfly.go     |   2 +-
+ src/pkg/p2p/preheat/provider/kraken.go        |   2 +-
+ src/pkg/reg/adapter/storage/adapter.go        | 553 ++++++++++++++++++
+ .../reg/adapter/storage/drivers/s3/driver.go  |  18 +
+ .../adapter/storage/drivers/sftp/driver.go    | 383 ++++++++++++
+ .../adapter/storage/drivers/sftp/fileinfo.go  |  76 +++
+ .../storage/drivers/sftp/filewriter.go        |  76 +++
+ .../adapter/storage/drivers/sftp/pool/net.go  |  33 ++
+ .../adapter/storage/drivers/sftp/pool/pool.go | 182 ++++++
+ .../adapter/storage/drivers/sftp/pool/ssh.go  | 224 +++++++
+ src/pkg/reg/adapter/storage/health/health.go  |   7 +
+ src/pkg/reg/adapter/storage/s3_factory.go     | 124 ++++
+ src/pkg/reg/adapter/storage/sftp_factory.go   |  57 ++
+ src/pkg/reg/manager.go                        |   2 +
+ src/pkg/reg/model/registry.go                 |   9 +-
+ src/pkg/scan/dao/scanner/model.go             |   2 +-
+ src/server/v2.0/handler/registry.go           |   2 +-
  24 files changed, 1776 insertions(+), 21 deletions(-)
  create mode 100644 src/pkg/reg/adapter/storage/adapter.go
  create mode 100644 src/pkg/reg/adapter/storage/drivers/s3/driver.go
