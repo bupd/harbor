@@ -1,6 +1,6 @@
 feat(replication): add SFTP storage adapter
 
-From: Vadim Bauer <vb@container-registry.com>
+From: bupd <bupdprasanth@gmail.com>
 
 
 ---
@@ -25,10 +25,10 @@ From: Vadim Bauer <vb@container-registry.com>
  src/pkg/reg/adapter/storage/s3_factory.go          |  124 ++++
  src/pkg/reg/adapter/storage/sftp_factory.go        |   57 ++
  src/pkg/reg/manager.go                             |    2 
- src/pkg/reg/model/registry.go                      |    7 
+ src/pkg/reg/model/registry.go                      |    9 
  src/pkg/scan/dao/scanner/model.go                  |    2 
  src/server/v2.0/handler/registry.go                |    2 
- 24 files changed, 1775 insertions(+), 20 deletions(-)
+ 24 files changed, 1776 insertions(+), 21 deletions(-)
  create mode 100644 src/pkg/reg/adapter/storage/adapter.go
  create mode 100644 src/pkg/reg/adapter/storage/drivers/s3/driver.go
  create mode 100644 src/pkg/reg/adapter/storage/drivers/sftp/driver.go
@@ -74,10 +74,10 @@ index d89822026..17b72d7fc 100644
  		return err
  	}
 diff --git a/src/go.mod b/src/go.mod
-index 5477fe7ca..f2a0548d6 100644
+index fb385f005..ab9aea474 100644
 --- a/src/go.mod
 +++ b/src/go.mod
-@@ -146,6 +146,7 @@ require (
+@@ -145,6 +145,7 @@ require (
  	github.com/josharian/intern v1.0.0 // indirect
  	github.com/json-iterator/go v1.1.12 // indirect
  	github.com/klauspost/compress v1.18.0 // indirect
@@ -85,7 +85,7 @@ index 5477fe7ca..f2a0548d6 100644
  	github.com/lib/pq v1.10.9 // indirect
  	github.com/magiconair/properties v1.8.7 // indirect
  	github.com/mailru/easyjson v0.9.0 // indirect
-@@ -207,6 +208,8 @@ require (
+@@ -206,6 +207,8 @@ require (
  	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
  )
  
@@ -95,10 +95,10 @@ index 5477fe7ca..f2a0548d6 100644
  	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
  	github.com/docker/distribution => github.com/distribution/distribution v2.8.2+incompatible
 diff --git a/src/go.sum b/src/go.sum
-index b588432b3..20e6cedc8 100644
+index 6bc6ee9b5..5f839dc28 100644
 --- a/src/go.sum
 +++ b/src/go.sum
-@@ -396,6 +396,8 @@ github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zt
+@@ -388,6 +388,8 @@ github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zt
  github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
  github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
  github.com/konsorten/go-windows-terminal-sequences v1.0.2/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
@@ -107,7 +107,7 @@ index b588432b3..20e6cedc8 100644
  github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515/go.mod h1:+0opPa2QZZtGFBFZlji/RkVcI2GknAs/DXo4wKdlNEc=
  github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
  github.com/kr/pretty v0.2.0/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
-@@ -485,6 +487,8 @@ github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
+@@ -465,6 +467,8 @@ github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
  github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
  github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
  github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
@@ -117,10 +117,10 @@ index b588432b3..20e6cedc8 100644
  github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
  github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 diff --git a/src/jobservice/job/impl/replication/replication.go b/src/jobservice/job/impl/replication/replication.go
-index 2ef364df9..7f44a7018 100644
+index a69e6f2e2..27a33c454 100644
 --- a/src/jobservice/job/impl/replication/replication.go
 +++ b/src/jobservice/job/impl/replication/replication.go
-@@ -53,6 +53,8 @@ import (
+@@ -55,6 +55,8 @@ import (
  	_ "github.com/goharbor/harbor/src/pkg/reg/adapter/tencentcr"
  	// register the VolcEngine CR Registry adapter
  	_ "github.com/goharbor/harbor/src/pkg/reg/adapter/volcenginecr"
@@ -2024,10 +2024,10 @@ index 000000000..d4bd1a29d
 +	return nil
 +}
 diff --git a/src/pkg/reg/manager.go b/src/pkg/reg/manager.go
-index a8ebfd195..a7a4a6596 100644
+index e6149bfdb..6ebc4c6b7 100644
 --- a/src/pkg/reg/manager.go
 +++ b/src/pkg/reg/manager.go
-@@ -55,6 +55,8 @@ import (
+@@ -57,6 +57,8 @@ import (
  	_ "github.com/goharbor/harbor/src/pkg/reg/adapter/tencentcr"
  	// register the VolcEngine CR Registry adapter
  	_ "github.com/goharbor/harbor/src/pkg/reg/adapter/volcenginecr"
@@ -2037,20 +2037,22 @@ index a8ebfd195..a7a4a6596 100644
  
  var (
 diff --git a/src/pkg/reg/model/registry.go b/src/pkg/reg/model/registry.go
-index 57b554744..35b96325c 100644
+index 0236a0b78..a92df6838 100644
 --- a/src/pkg/reg/model/registry.go
 +++ b/src/pkg/reg/model/registry.go
-@@ -35,9 +35,10 @@ const (
+@@ -35,10 +35,11 @@ const (
  	RegistryTypeTencentTcr       = "tencent-tcr"
  	RegistryTypeGithubCR         = "github-ghcr"
  	RegistryTypeVolcCR           = "volcengine-cr"
 -
 -	RegistryTypeHelmHub     = "helm-hub"
 -	RegistryTypeArtifactHub = "artifact-hub"
+-	RegistryHarborSatellite = "harbor-satellite"
 +	RegistryTypeSFTP             = "sftp"
 +	RegistryTypeS3               = "s3"
 +	RegistryTypeHelmHub          = "helm-hub"
 +	RegistryTypeArtifactHub      = "artifact-hub"
++	RegistryHarborSatellite      = "harbor-satellite"
  
  	FilterStyleTypeText  = "input"
  	FilterStyleTypeRadio = "radio"

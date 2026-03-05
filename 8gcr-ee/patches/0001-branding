@@ -1,38 +1,45 @@
-[PATCH] feat: add branding
+feat(branding): add branding customization support
 
 From: bupd <bupdprasanth@gmail.com>
 
-Signed-off-by: bupd <bupdprasanth@gmail.com>
 
 ---
- api/v2.0/swagger.yaml                              | 112 ++++++++-
- .../postgresql/0171_8gears_2.14_branding.up.sql    |   5 +
- src/controller/systeminfo/controller.go            | 280 ++++++++++++++++++++-
- src/pkg/branding/dao/dao.go                        |  66 +++++
- src/pkg/branding/manager.go                        |  59 +++++
- src/pkg/branding/models/branding.go                |  56 +++++
- .../src/app/account/sign-in/sign-in.component.html |   2 +-
- .../src/app/account/sign-in/sign-in.component.ts   |  28 ++-
- src/portal/src/app/app.component.ts                |  30 ++-
- src/portal/src/app/app.module.ts                   |   4 +-
- .../config/branding/branding.component.html        |  41 +++
- .../config/branding/branding.component.scss        |   0
- .../config/branding/branding.component.spec.ts     |  13 +
- .../config/branding/branding.component.ts          | 214 ++++++++++++++++
- .../left-side-nav/config/config.component.html     |  10 +
- .../app/base/left-side-nav/config/config.module.ts |   9 +-
- .../src/app/services/skinable-config.service.ts    |  80 +++++-
- .../about-dialog/about-dialog.component.html       |   6 +-
- .../about-dialog/about-dialog.component.ts         |  31 ++-
- .../global-search/global-search.component.ts       |  79 ++++--
- .../components/navigator/navigator.component.html  |   8 +-
- .../components/navigator/navigator.component.ts    |  27 +-
- src/portal/src/i18n/lang/en-us-lang.json           |   5 +
- src/server/v2.0/handler/systeminfo.go              |  41 +++
+ api/v2.0/swagger.yaml                              |  112 ++++++++
+ .../postgresql/0171_8gears_2.14_branding.up.sql    |    5 
+ src/controller/systeminfo/controller.go            |  280 ++++++++++++++++++++
+ src/pkg/branding/dao/dao.go                        |   66 +++++
+ src/pkg/branding/manager.go                        |   59 ++++
+ src/pkg/branding/models/branding.go                |   56 ++++
+ .../src/app/account/sign-in/sign-in.component.html |    2 
+ .../src/app/account/sign-in/sign-in.component.ts   |   28 +-
+ src/portal/src/app/app.component.ts                |   30 +-
+ src/portal/src/app/app.module.ts                   |    4 
+ .../config/branding/branding.component.html        |   41 +++
+ .../config/branding/branding.component.scss        |    0 
+ .../config/branding/branding.component.spec.ts     |   13 +
+ .../config/branding/branding.component.ts          |  214 +++++++++++++++
+ .../left-side-nav/config/config.component.html     |   10 +
+ .../app/base/left-side-nav/config/config.module.ts |    9 +
+ .../src/app/services/skinable-config.service.ts    |   80 +++++-
+ .../about-dialog/about-dialog.component.html       |    6 
+ .../about-dialog/about-dialog.component.ts         |   31 ++
+ .../global-search/global-search.component.ts       |   79 ++++--
+ .../components/navigator/navigator.component.html  |    8 -
+ .../components/navigator/navigator.component.ts    |   27 ++
+ src/portal/src/i18n/lang/en-us-lang.json           |    5 
+ src/server/v2.0/handler/systeminfo.go              |   41 +++
  24 files changed, 1121 insertions(+), 85 deletions(-)
+ create mode 100644 make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
+ create mode 100644 src/pkg/branding/dao/dao.go
+ create mode 100644 src/pkg/branding/manager.go
+ create mode 100644 src/pkg/branding/models/branding.go
+ create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.html
+ create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss
+ create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
+ create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index 7dfbfe00e..191574472 100644
+index f76136ab7..273c916e2 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
 @@ -4106,6 +4106,59 @@ paths:
@@ -163,7 +170,7 @@ index 7dfbfe00e..191574472 100644
          x-isnullable: true
        disabled_audit_log_event_types:
          type: string
--        description: the list to disable log audit event types.
+-        description: the list to disable log audit event types. 
 +        description: the list to disable log audit event types.
          x-omitempty: true
          x-isnullable: true
@@ -184,7 +191,7 @@ index e3d40b303..faa54fde9 100644
 --- a/src/controller/systeminfo/controller.go
 +++ b/src/controller/systeminfo/controller.go
 @@ -16,10 +16,13 @@ package systeminfo
-
+ 
  import (
  	"context"
 +	"encoding/json"
@@ -195,7 +202,7 @@ index e3d40b303..faa54fde9 100644
  	"strings"
 +	"sync"
  	"time"
-
+ 
  	"github.com/goharbor/harbor/src/common"
 @@ -28,9 +31,11 @@ import (
  	"github.com/goharbor/harbor/src/lib/config/models"
@@ -207,11 +214,11 @@ index e3d40b303..faa54fde9 100644
  	"github.com/goharbor/harbor/src/pkg/version"
 +	mdl "github.com/goharbor/harbor/src/server/v2.0/models"
  )
-
+ 
  const defaultRootCert = "/etc/core/ca/ca.crt"
 @@ -53,7 +58,8 @@ type Data struct {
  }
-
+ 
  type protectedData struct {
 -	CurrentTime                 time.Time
 +	CurrentTime time.Time
@@ -222,7 +229,7 @@ index e3d40b303..faa54fde9 100644
 @@ -70,6 +76,27 @@ type Options struct {
  	WithProtectedInfo bool
  }
-
+ 
 +// BrandingConfig wraps the UI branding settings returned to the client.
 +type BrandingConfig struct {
 +	HeaderBgColor *HeaderBgColor `json:"headerBgColor,omitempty"` // Background colors for header in light/dark mode
@@ -246,9 +253,9 @@ index e3d40b303..faa54fde9 100644
 +
  // Controller defines the methods needed for systeminfo API
  type Controller interface {
-
+ 
 @@ -81,9 +108,194 @@ type Controller interface {
-
+ 
  	// GetCA returns a ReadCloser of Harbor's CA if it's configured and accessible from Harbor core
  	GetCA(ctx context.Context) (io.ReadCloser, error)
 +
@@ -351,7 +358,7 @@ index e3d40b303..faa54fde9 100644
 +
 +	return result, nil
  }
-
+ 
 -type controller struct{}
 +func (c *controller) GetBrandingConfig(ctx context.Context) (*mdl.BrandingConfig, error) {
 +	logger := log.GetLogger(ctx)
@@ -440,11 +447,11 @@ index e3d40b303..faa54fde9 100644
 +
 +	return string(data), nil // convert to string
 +}
-
+ 
  func (c *controller) GetInfo(ctx context.Context, opt Options) (*Data, error) {
  	logger := log.GetLogger(ctx)
 @@ -171,5 +383,67 @@ func (c *controller) GetCA(ctx context.Context) (io.ReadCloser, error) {
-
+ 
  // NewController return an instance of controller
  func NewController() Controller {
 -	return &controller{}
@@ -725,7 +732,7 @@ index 5108d4316..8f5acbb70 100644
          }">
          <form #signInForm="ngForm" class="login">
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.ts b/src/portal/src/app/account/sign-in/sign-in.component.ts
-index 3cb75368e..1f8061433 100644
+index c70fbf904..8324ed912 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.ts
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.ts
 @@ -38,6 +38,7 @@ import {
@@ -733,12 +740,12 @@ index 3cb75368e..1f8061433 100644
  import { UserPermissionService } from '../../shared/services';
  import { finalize } from 'rxjs/operators';
 +import { SysteminfoService } from 'ng-swagger-gen/services';
-
+ 
  // Define status flags for signing in states
  export const signInStatusNormal = 0;
 @@ -89,16 +90,23 @@ export class SignInComponent implements AfterViewChecked, OnInit {
      ) {}
-
+ 
      ngOnInit(): void {
 -        // custom skin
 -        let customSkinObj = this.skinableConfig.getSkinConfig();
@@ -779,7 +786,7 @@ index 07c3ce543..5f457b353 100644
  } from './base/left-side-nav/job-service-dashboard/job-service-dashboard-health-check.service';
  import { SessionService } from './shared/services/session.service';
 +import { SysteminfoService } from 'ng-swagger-gen/services';
-
+ 
  @Component({
      selector: 'harbor-app',
 @@ -59,18 +60,23 @@ export class AppComponent implements OnInit, OnDestroy {
@@ -827,7 +834,7 @@ index ba80bcaeb..183e3dbd8 100644
  import { MessageHandlerService } from './shared/services/message-handler.service';
  import { HarborTranslateLoaderService } from './services/harbor-translate-loader.service';
 +import { SysteminfoService } from 'ng-swagger-gen/services';
-
+ 
  function initConfig(
      configService: AppConfigService,
 @@ -80,10 +81,11 @@ class MyMissingTranslationHandler implements MissingTranslationHandler {
@@ -1163,7 +1170,7 @@ index b8635a2df..2a9acabcc 100644
  import { SecurityComponent } from './security/security.component';
 +import { BrandingComponent } from './branding/branding.component';
 +import { SysteminfoService } from 'ng-swagger-gen/services';
-
+ 
  const routes: Routes = [
      {
 @@ -38,6 +40,10 @@ const routes: Routes = [
@@ -1214,11 +1221,11 @@ index 62c248d9d..00687b035 100644
 +        private systeminfoService: SysteminfoService,
          @Inject(DOCUMENT) private document: Document
      ) {}
-
+ 
 @@ -40,19 +44,73 @@ export class SkinableConfig {
              );
      }
-
+ 
 +    private brandingCache$: Observable<any> | null = null;
 +    public getBrandingInfo(refetch: boolean): Observable<any> {
 +        if (!refetch) {
@@ -1270,7 +1277,7 @@ index 62c248d9d..00687b035 100644
      public getSkinConfig() {
          return this.customSkinData;
      }
-
+ 
 -    public setTitleIcon() {
 -        if (
 -            this.customSkinData &&
@@ -1320,7 +1327,7 @@ index c920c9d7f..a4e100dd0 100644
 --- a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
 +++ b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
 @@ -34,14 +34,29 @@ export class AboutDialogComponent implements OnInit {
-
+ 
      ngOnInit(): void {
          // custom skin
 -        let customSkinObj = this.skinableConfig.getSkinConfig();
@@ -1355,7 +1362,7 @@ index c920c9d7f..a4e100dd0 100644
 +            },
 +        });
      }
-
+ 
      public get version(): string {
 diff --git a/src/portal/src/app/shared/components/global-search/global-search.component.ts b/src/portal/src/app/shared/components/global-search/global-search.component.ts
 index 049dce8d3..a6b2697f2 100644
@@ -1366,12 +1373,12 @@ index 049dce8d3..a6b2697f2 100644
  import { SkinableConfig } from '../../../services/skinable-config.service';
  import { Location } from '@angular/common';
 +import { SysteminfoService } from 'ng-swagger-gen/services';
-
+ 
  const deBounceTime = 500; // ms
  const SEARCH_KEY: string = 'globalSearch';
 @@ -65,29 +66,63 @@ export class GlobalSearchComponent implements OnInit, OnDestroy {
      ) {}
-
+ 
      ngOnInit(): void {
 +        this.skinableConfig.getBrandingInfo(false).subscribe({
 +            next: branding => {
@@ -1452,7 +1459,7 @@ index 049dce8d3..a6b2697f2 100644
 +        //             this.placeholderText = res;
 +        //         });
 +        // }
-
+ 
          this.searchSub = this.searchTerms
              .pipe(debounceTime(deBounceTime))
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.html b/src/portal/src/app/shared/components/navigator/navigator.component.html
@@ -1480,7 +1487,7 @@ index 5f4e3a252..b218ddbb1 100644
              }}</span>
          </a>
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.ts b/src/portal/src/app/shared/components/navigator/navigator.component.ts
-index c61ea8f03..d9a14eaed 100644
+index 2f665a9f6..1e079eb6d 100644
 --- a/src/portal/src/app/shared/components/navigator/navigator.component.ts
 +++ b/src/portal/src/app/shared/components/navigator/navigator.component.ts
 @@ -46,6 +46,8 @@ import { map } from 'rxjs/operators';
@@ -1489,7 +1496,7 @@ index c61ea8f03..d9a14eaed 100644
  import { signInStatusError } from '../../../account/sign-in/sign-in.component';
 +import { SysteminfoService } from 'ng-swagger-gen/services';
 +import { BrandingConfig } from 'ng-swagger-gen/models';
-
+ 
  @Component({
      selector: 'navigator',
 @@ -61,7 +63,7 @@ export class NavigatorComponent implements OnInit {
@@ -1502,7 +1509,7 @@ index c61ea8f03..d9a14eaed 100644
      constructor(
          private session: SessionService,
 @@ -77,7 +79,20 @@ export class NavigatorComponent implements OnInit {
-
+ 
      ngOnInit(): void {
          // custom skin
 -        this.customStyle = this.skinableConfig.getSkinConfig();
@@ -1524,7 +1531,7 @@ index c61ea8f03..d9a14eaed 100644
          if (this.selectedLang) {
              registerLocaleData(
 @@ -286,15 +301,15 @@ export class NavigatorComponent implements OnInit {
-
+ 
      getBgColor(): string {
          if (
 -            this.customStyle &&
@@ -1573,7 +1580,7 @@ index 6c673e08c..834f60fe2 100644
 @@ -51,6 +51,47 @@ func (s *sysInfoAPI) GetSystemInfo(ctx context.Context, _ systeminfo.GetSystemIn
  	return systeminfo.NewGetSystemInfoOK().WithPayload(s.convertInfo(data))
  }
-
+ 
 +func (s *sysInfoAPI) GetBrandingInfo(ctx context.Context, _ systeminfo.GetBrandingInfoParams) middleware.Responder {
 +	data, err := s.ctl.GetBrandingConfig(ctx)
 +	if err != nil {

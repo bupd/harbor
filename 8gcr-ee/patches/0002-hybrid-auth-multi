@@ -1,19 +1,15 @@
-[PATCH] feat(auth): add hybrid auth for OIDC + local users
+feat(auth): hybrid auth multi
 
 From: bupd <bupdprasanth@gmail.com>
 
-HybridAuth allows both OIDC and local admin authentication.
-Normally, when OIDC is enabled, only OIDC users can authenticate.
-Enabling HybridAuth permits local DB admin logins alongside OIDC.
 
-Signed-off-by: bupd <bupdprasanth@gmail.com>
 ---
  src/controller/user/controller.go |    3 ++-
  src/core/auth/authenticator.go    |   13 ++++++++++++-
  2 files changed, 14 insertions(+), 2 deletions(-)
 
 diff --git a/src/controller/user/controller.go b/src/controller/user/controller.go
-index 33f24b95d..e515915d9 100644
+index d2727576d..8ee2b5679 100644
 --- a/src/controller/user/controller.go
 +++ b/src/controller/user/controller.go
 @@ -163,7 +163,8 @@ func (c *controller) Get(ctx context.Context, id int, opt *Option) (*commonmodel
