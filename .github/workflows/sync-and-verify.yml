@@ -108,7 +108,13 @@ jobs:
       # ── Phase 2: Verify Patches ──
 
       - name: Install StGit
-        run: pip install stgit
+        env:
+          STGIT_VERSION: "2.5.5"
+        run: |
+          curl -fsSL "https://github.com/stacked-git/stgit/releases/download/v${STGIT_VERSION}/stgit_${STGIT_VERSION}-1_amd64.deb" -o /tmp/stgit.deb
+          sudo dpkg -i /tmp/stgit.deb
+          rm /tmp/stgit.deb
+          stg --version
 
       - name: Configure rerere
         run: |
