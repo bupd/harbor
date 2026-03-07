@@ -184,9 +184,12 @@ jobs:
         if: steps.apply.outputs.result == 'failed'
         id: rebase
         run: |
+          # Copy patches before checkout (directory won't exist at base commit)
+          cp -r 8gcr-ee/patches /tmp/patches-for-rebase
+
           git checkout -b wip/rebase-patches "${BASE_SHA}"
           stg init
-          stg import -S 8gcr-ee/patches/series
+          stg import -S /tmp/patches-for-rebase/series
 
           if stg rebase main; then
             echo "result=success" >> "$GITHUB_OUTPUT"
