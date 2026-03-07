@@ -170,8 +170,8 @@ jobs:
         if: steps.apply.outputs.result == 'failed'
         run: |
           if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            echo "Base commit not found locally, fetching harbor-next"
-            git fetch harbor-next main --depth=500
+            echo "Base commit not found locally, fetching it from harbor-next"
+            git fetch harbor-next "${BASE_SHA}"
             if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
               echo "::error::Base commit ${BASE_SHA} not reachable"
               exit 1
