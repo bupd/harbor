@@ -37,34 +37,34 @@ jobs:
       - name: Fetch harbor-next
         run: |
           git remote add harbor-next https://github.com/container-registry/harbor-next.git || true
-          git fetch harbor-next next
+          git fetch harbor-next main
 
       - name: Count new commits
         id: sync
         run: |
-          count=$(git rev-list HEAD..harbor-next/next --count)
+          count=$(git rev-list HEAD..harbor-next/main --count)
           echo "new_commits=$count" >> "$GITHUB_OUTPUT"
           if [ "$count" -eq 0 ]; then
-            echo "No new commits from harbor-next/next"
+            echo "No new commits from harbor-next/main"
           else
             echo "$count new commit(s) to merge"
           fi
 
-      - name: Merge harbor-next/next
+      - name: Merge harbor-next/main
         if: steps.sync.outputs.new_commits != '0'
         run: |
-          if ! git merge harbor-next/next --no-edit; then
+          if ! git merge harbor-next/main --no-edit; then
             git merge --abort
-            echo "::error::Merge conflict with harbor-next/next"
+            echo "::error::Merge conflict with harbor-next/main"
 
             main_head=$(git rev-parse HEAD)
-            next_head=$(git rev-parse harbor-next/next)
+            next_head=$(git rev-parse harbor-next/main)
             run_url="${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}"
 
-            body="Merge conflict while syncing \`harbor-next/next\` into \`main\`.
+            body="Merge conflict while syncing \`harbor-next/main\` into \`main\`.
 
           **Main HEAD:** \`${main_head}\`
-          **harbor-next/next:** \`${next_head}\`
+          **harbor-next/main:** \`${next_head}\`
           **Workflow run:** ${run_url}
 
           Resolve manually:
@@ -72,8 +72,8 @@ jobs:
           git fetch origin main
           git checkout main
           git remote add harbor-next https://github.com/container-registry/harbor-next.git || true
-          git fetch harbor-next next
-          git merge harbor-next/next
+          git fetch harbor-next main
+          git merge harbor-next/main
           # resolve conflicts
           git push origin main
           \`\`\`"
@@ -83,7 +83,7 @@ jobs:
               gh issue comment "$existing" --body "$body"
             else
               gh issue create \
-                --title "Sync conflict: harbor-next/next into main" \
+                --title "Sync conflict: harbor-next/main into main" \
                 --label sync \
                 --body "$body"
             fi
@@ -165,7 +165,7 @@ jobs:
         run: |
           if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
             echo "Base commit not found locally, fetching harbor-next"
-            git fetch harbor-next next --depth=500
+            git fetch harbor-next main --depth=500
             if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
               echo "::error::Base commit ${BASE_SHA} not reachable"
               exit 1
