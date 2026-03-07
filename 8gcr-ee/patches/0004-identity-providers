@@ -89,7 +89,7 @@ From: bupd <bupdprasanth@gmail.com>
  src/controller/robot/model.go                      |    1 
  src/controller/systeminfo/controller.go            |    2 
  src/controller/systeminfo/controller_test.go       |   13 
- src/go.mod                                         |   17 
+ src/go.mod                                         |   16 
  src/go.sum                                         |   25 
  src/lib/config/metadata/metadatalist.go            |    1 
  src/lib/config/userconfig.go                       |    5 
@@ -170,7 +170,7 @@ From: bupd <bupdprasanth@gmail.com>
  src/server/v2.0/handler/robot.go                   |  113 +
  src/server/v2.0/handler/robot_test.go              |  134 +
  src/server/v2.0/handler/systeminfo.go              |    1 
- 166 files changed, 21068 insertions(+), 53 deletions(-)
+ 166 files changed, 21068 insertions(+), 52 deletions(-)
  create mode 100644 docs/ADR-federated-idp.md
  create mode 100644 docs/img/fedidp-enterprise-1.png
  create mode 100644 docs/img/fedidp-enterprise-2.png
@@ -287,7 +287,7 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 src/server/v2.0/handler/model/federated_idp.go
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index 273c916e2..32b603911 100644
+index 4ab8c4d6cf..fe06677cac 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
 @@ -3789,6 +3789,352 @@ paths:
@@ -643,7 +643,7 @@ index 273c916e2..32b603911 100644
    /replication/adapters:
      get:
        summary: List registry adapters
-@@ -7574,6 +7920,185 @@ definitions:
+@@ -7583,6 +7929,185 @@ definitions:
        access_secret:
          type: string
          description: Access secret, e.g. password when credential type is 'basic'.
@@ -829,7 +829,7 @@ index 273c916e2..32b603911 100644
    Registry:
      type: object
      properties:
-@@ -7915,6 +8440,11 @@ definitions:
+@@ -7924,6 +8449,11 @@ definitions:
        creator_ref:
          type: integer
          description: The reference of the robot creator, like the id of harbor user.
@@ -841,7 +841,7 @@ index 273c916e2..32b603911 100644
        creation_time:
          type: string
          format: date-time
-@@ -7946,6 +8476,11 @@ definitions:
+@@ -7955,6 +8485,11 @@ definitions:
          type: integer
          format: int64
          description: The duration of the robot in days, duration must be either -1(Never) or a positive integer
@@ -853,7 +853,7 @@ index 273c916e2..32b603911 100644
        permissions:
          type: array
          items:
-@@ -7964,6 +8499,10 @@ definitions:
+@@ -7973,6 +8508,10 @@ definitions:
        secret:
          type: string
          description: The secret of the robot
@@ -864,7 +864,7 @@ index 273c916e2..32b603911 100644
        creation_time:
          type: string
          format: date-time
-@@ -8102,6 +8641,11 @@ definitions:
+@@ -8111,6 +8650,11 @@ definitions:
          x-nullable: true
          x-omitempty: true
          description: The flag to indicate whether notification mechanism is enabled on Harbor instance.
@@ -876,7 +876,7 @@ index 273c916e2..32b603911 100644
        authproxy_settings:
          description: The setting of auth proxy this is only available when Harbor relies on authproxy for authentication.
          x-nullable: true
-@@ -9266,6 +9810,9 @@ definitions:
+@@ -9278,6 +9822,9 @@ definitions:
        disabled_audit_log_event_types:
          $ref: '#/definitions/StringConfigItem'
          description: The audit log event types to skip to log in database
@@ -886,7 +886,7 @@ index 273c916e2..32b603911 100644
    Configurations:
      type: object
      properties:
-@@ -9554,6 +10101,11 @@ definitions:
+@@ -9571,6 +10118,11 @@ definitions:
          description: the list to disable log audit event types.
          x-omitempty: true
          x-isnullable: true
@@ -900,7 +900,7 @@ index 273c916e2..32b603911 100644
      properties:
 diff --git a/docs/ADR-federated-idp.md b/docs/ADR-federated-idp.md
 new file mode 100644
-index 000000000..b7cba2f16
+index 0000000000..b7cba2f16d
 --- /dev/null
 +++ b/docs/ADR-federated-idp.md
 @@ -0,0 +1,1728 @@
@@ -152713,7 +152713,7 @@ HcmV?d00001
 
 diff --git a/docs/jwks-key-rotation.md b/docs/jwks-key-rotation.md
 new file mode 100644
-index 000000000..739d51e1a
+index 0000000000..739d51e1ad
 --- /dev/null
 +++ b/docs/jwks-key-rotation.md
 @@ -0,0 +1,682 @@
@@ -153401,7 +153401,7 @@ index 000000000..739d51e1a
 +- [Harbor Federated Identity Documentation](https://goharbor.io/docs/)
 diff --git a/docs/tutorial-federated-idp.md b/docs/tutorial-federated-idp.md
 new file mode 100644
-index 000000000..5dbeef0b0
+index 0000000000..5dbeef0b02
 --- /dev/null
 +++ b/docs/tutorial-federated-idp.md
 @@ -0,0 +1,612 @@
@@ -154019,7 +154019,7 @@ index 000000000..5dbeef0b0
 +> **Debug tip**: Decode JWT at [jwt.io](https://jwt.io) to inspect claims (non-sensitive tokens only).
 diff --git a/make/migrations/postgresql/0172_8gears_cr_schema.up.sql b/make/migrations/postgresql/0172_8gears_cr_schema.up.sql
 new file mode 100644
-index 000000000..096d6d0fd
+index 0000000000..096d6d0fdb
 --- /dev/null
 +++ b/make/migrations/postgresql/0172_8gears_cr_schema.up.sql
 @@ -0,0 +1,46 @@
@@ -154071,7 +154071,7 @@ index 000000000..096d6d0fd
 +ON claim_rules (identity_provider_id, claim_path, value, robot_id);
 diff --git a/make/migrations/postgresql/0173_jwks_cache_schema.up.sql b/make/migrations/postgresql/0173_jwks_cache_schema.up.sql
 new file mode 100644
-index 000000000..9831fb949
+index 0000000000..9831fb949f
 --- /dev/null
 +++ b/make/migrations/postgresql/0173_jwks_cache_schema.up.sql
 @@ -0,0 +1,9 @@
@@ -154085,10 +154085,10 @@ index 000000000..9831fb949
 +CREATE INDEX IF NOT EXISTS idx_identity_providers_jwks_cache
 +ON identity_providers (id, jwks_expires_at, jwks_last_fetch_attempt);
 diff --git a/src/common/const.go b/src/common/const.go
-index 25af3a4f0..1e50a82bb 100644
+index 2d8a7ea6da..5f1fae2291 100644
 --- a/src/common/const.go
 +++ b/src/common/const.go
-@@ -225,6 +225,9 @@ const (
+@@ -226,6 +226,9 @@ const (
  	// AuditLogEventsDisabled ...
  	AuditLogEventsDisabled = "disabled_audit_log_event_types"
  
@@ -154099,7 +154099,7 @@ index 25af3a4f0..1e50a82bb 100644
  	SessionTimeout = "session_timeout"
  
 diff --git a/src/common/rbac/const.go b/src/common/rbac/const.go
-index f23189db9..ea36b207c 100644
+index f23189db97..ea36b207cb 100644
 --- a/src/common/rbac/const.go
 +++ b/src/common/rbac/const.go
 @@ -70,6 +70,7 @@ const (
@@ -154161,7 +154161,7 @@ index f23189db9..ea36b207c 100644
  			{Resource: ResourceProject, Action: ActionDelete},
  			{Resource: ResourceProject, Action: ActionUpdate},
 diff --git a/src/common/rbac/project/rbac_role.go b/src/common/rbac/project/rbac_role.go
-index c40ba4ce7..1a0dbc490 100644
+index c40ba4ce70..1a0dbc490e 100644
 --- a/src/common/rbac/project/rbac_role.go
 +++ b/src/common/rbac/project/rbac_role.go
 @@ -71,6 +71,12 @@ var (
@@ -154179,7 +154179,7 @@ index c40ba4ce7..1a0dbc490 100644
  			{Resource: rbac.ResourceRobot, Action: rbac.ActionUpdate},
 diff --git a/src/controller/federatedidp/controller.go b/src/controller/federatedidp/controller.go
 new file mode 100644
-index 000000000..08a12492b
+index 0000000000..08a12492b3
 --- /dev/null
 +++ b/src/controller/federatedidp/controller.go
 @@ -0,0 +1,380 @@
@@ -154565,7 +154565,7 @@ index 000000000..08a12492b
 +}
 diff --git a/src/controller/federatedidp/model.go b/src/controller/federatedidp/model.go
 new file mode 100644
-index 000000000..9d842e2b3
+index 0000000000..9d842e2b3f
 --- /dev/null
 +++ b/src/controller/federatedidp/model.go
 @@ -0,0 +1,25 @@
@@ -154595,7 +154595,7 @@ index 000000000..9d842e2b3
 +	SCOPEALLPROJECT = "/project/*"
 +)
 diff --git a/src/controller/robot/model.go b/src/controller/robot/model.go
-index 7b5fae449..47098ebb5 100644
+index 7b5fae4496..47098ebb50 100644
 --- a/src/controller/robot/model.go
 +++ b/src/controller/robot/model.go
 @@ -44,6 +44,7 @@ type Robot struct {
@@ -154607,7 +154607,7 @@ index 7b5fae449..47098ebb5 100644
  
  // IsSysLevel, true is a system level robot, others are project level.
 diff --git a/src/controller/systeminfo/controller.go b/src/controller/systeminfo/controller.go
-index faa54fde9..b83779508 100644
+index faa54fde97..b83779508e 100644
 --- a/src/controller/systeminfo/controller.go
 +++ b/src/controller/systeminfo/controller.go
 @@ -68,6 +68,7 @@ type protectedData struct {
@@ -154627,7 +154627,7 @@ index faa54fde9..b83779508 100644
  	return res, nil
  }
 diff --git a/src/controller/systeminfo/controller_test.go b/src/controller/systeminfo/controller_test.go
-index 6c3eb4546..3532a5e2f 100644
+index 6c3eb45461..3532a5e2f2 100644
 --- a/src/controller/systeminfo/controller_test.go
 +++ b/src/controller/systeminfo/controller_test.go
 @@ -59,6 +59,18 @@ func (s *sysInfoCtlTestSuite) TestGetInfo() {
@@ -154658,7 +154658,7 @@ index 6c3eb4546..3532a5e2f 100644
  			},
  		},
 diff --git a/src/go.mod b/src/go.mod
-index ab9aea474..9d44c6d50 100644
+index 100ec68e3c..1c5a759e67 100644
 --- a/src/go.mod
 +++ b/src/go.mod
 @@ -81,6 +81,11 @@ require (
@@ -154671,18 +154671,17 @@ index ab9aea474..9d44c6d50 100644
 +)
 +
  require (
- 	cloud.google.com/go/compute/metadata v0.5.2 // indirect
+ 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
  	github.com/Azure/azure-sdk-for-go v37.2.0+incompatible // indirect
-@@ -98,7 +103,7 @@ require (
- 	github.com/beorn7/perks v1.0.1 // indirect
+@@ -99,6 +104,7 @@ require (
  	github.com/cespare/xxhash/v2 v2.3.0 // indirect
- 	github.com/containerd/stargz-snapshotter/estargz v0.14.3 // indirect
--	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+ 	github.com/containerd/stargz-snapshotter/estargz v0.18.1 // indirect
+ 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 +	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
  	github.com/denverdino/aliyungo v0.0.0-20191227032621-df38c6fa730c // indirect
  	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
  	github.com/dnaeon/go-vcr v1.2.0 // indirect
-@@ -124,6 +129,7 @@ require (
+@@ -124,6 +130,7 @@ require (
  	github.com/go-openapi/swag/typeutils v0.25.1 // indirect
  	github.com/go-openapi/swag/yamlutils v0.25.1 // indirect
  	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
@@ -154690,9 +154689,9 @@ index ab9aea474..9d44c6d50 100644
  	github.com/gogo/protobuf v1.3.2 // indirect
  	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
  	github.com/google/go-querystring v1.1.0 // indirect
-@@ -146,6 +152,13 @@ require (
+@@ -146,6 +153,13 @@ require (
  	github.com/json-iterator/go v1.1.12 // indirect
- 	github.com/klauspost/compress v1.18.0 // indirect
+ 	github.com/klauspost/compress v1.18.1 // indirect
  	github.com/kr/fs v0.1.0 // indirect
 +	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
 +	github.com/lestrrat-go/dsig v1.0.0 // indirect
@@ -154704,7 +154703,7 @@ index ab9aea474..9d44c6d50 100644
  	github.com/lib/pq v1.10.9 // indirect
  	github.com/magiconair/properties v1.8.7 // indirect
  	github.com/mailru/easyjson v0.9.0 // indirect
-@@ -165,6 +178,7 @@ require (
+@@ -165,6 +179,7 @@ require (
  	github.com/sagikazarmark/locafero v0.4.0 // indirect
  	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
  	github.com/satori/go.uuid v1.2.0 // indirect
@@ -154712,19 +154711,19 @@ index ab9aea474..9d44c6d50 100644
  	github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18 // indirect
  	github.com/sirupsen/logrus v1.9.3 // indirect
  	github.com/smartystreets/goconvey v1.8.1 // indirect
-@@ -175,6 +189,7 @@ require (
+@@ -175,6 +190,7 @@ require (
  	github.com/stretchr/objx v0.5.2 // indirect
  	github.com/subosito/gotenv v1.6.0 // indirect
  	github.com/valyala/bytebufferpool v1.0.0 // indirect
 +	github.com/valyala/fastjson v1.6.4 // indirect
- 	github.com/vbatts/tar-split v0.11.3 // indirect
+ 	github.com/vbatts/tar-split v0.12.2 // indirect
  	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
  	github.com/volcengine/volc-sdk-golang v1.0.23 // indirect
 diff --git a/src/go.sum b/src/go.sum
-index a76142150..b51124c05 100644
+index 8e89774352..4f8f468a84 100644
 --- a/src/go.sum
 +++ b/src/go.sum
-@@ -111,6 +111,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
+@@ -109,6 +109,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
  github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
  github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
  github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -154733,7 +154732,7 @@ index a76142150..b51124c05 100644
  github.com/denverdino/aliyungo v0.0.0-20191227032621-df38c6fa730c h1:ZjNKFQ2pBtbkmtporMvGVu2M7fs3Ip3sSy0Gyqsq8xc=
  github.com/denverdino/aliyungo v0.0.0-20191227032621-df38c6fa730c/go.mod h1:dV8lFg6daOBZbT6/BDGIz6Y3WFGn8juu6G+CQ6LHtl0=
  github.com/dghubble/sling v1.4.2 h1:vs1HIGBbSl2SEALyU+irpYFLZMfc49Fp+jYryFebQjM=
-@@ -221,6 +223,8 @@ github.com/go-viper/mapstructure/v2 v2.4.0 h1:EBsztssimR/CONLSZZ04E8qAkxNYq4Qp9L
+@@ -219,6 +221,8 @@ github.com/go-viper/mapstructure/v2 v2.4.0 h1:EBsztssimR/CONLSZZ04E8qAkxNYq4Qp9L
  github.com/go-viper/mapstructure/v2 v2.4.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
  github.com/gocarina/gocsv v0.0.0-20210516172204-ca9e8a8ddea8 h1:hp1oqdzmv37vPLYFGjuM/RmUgUMfD9vQfMszc54l55Y=
  github.com/gocarina/gocsv v0.0.0-20210516172204-ca9e8a8ddea8/go.mod h1:5YoVOkjYAQumqlV356Hj3xeYh4BdZuLE0/nRkf2NKkI=
@@ -154742,7 +154741,7 @@ index a76142150..b51124c05 100644
  github.com/gofrs/uuid v4.0.0+incompatible h1:1SD/1F5pU8p29ybwgQSwpQk+mwdRrXCYuPhW6m+TnJw=
  github.com/gofrs/uuid v4.0.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
  github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
-@@ -402,6 +406,22 @@ github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
+@@ -400,6 +404,22 @@ github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
  github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
  github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
  github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
@@ -154765,7 +154764,7 @@ index a76142150..b51124c05 100644
  github.com/lib/pq v1.0.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
  github.com/lib/pq v1.1.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
  github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
-@@ -510,6 +530,8 @@ github.com/sagikazarmark/slog-shim v0.1.0 h1:diDBnUNK9N/354PgrxMywXnAwEr1QZcOr6g
+@@ -507,6 +527,8 @@ github.com/sagikazarmark/slog-shim v0.1.0 h1:diDBnUNK9N/354PgrxMywXnAwEr1QZcOr6g
  github.com/sagikazarmark/slog-shim v0.1.0/go.mod h1:SrcSrq8aKtyuqEI1uvTDTK1arOWRIczQRv+GVI1AkeQ=
  github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
  github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
@@ -154774,7 +154773,7 @@ index a76142150..b51124c05 100644
  github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18 h1:DAYUYH5869yV94zvCES9F51oYtN5oGlwjxJJz7ZCnik=
  github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18/go.mod h1:nkxAfR/5quYxwPZhyDxgasBMnRtBZd0FCEpawpjMUFg=
  github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24/go.mod h1:M+9NzErvs504Cn4c5DxATwIqPbtswREoFCre64PpcG4=
-@@ -547,6 +569,7 @@ github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXf
+@@ -543,6 +565,7 @@ github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXf
  github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
  github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
  github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
@@ -154782,20 +154781,20 @@ index a76142150..b51124c05 100644
  github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
  github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
  github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
-@@ -566,6 +589,8 @@ github.com/uber/jaeger-lib v2.4.1+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6
- github.com/urfave/cli v1.22.12/go.mod h1:sSBEIC79qR6OvcmsD4U3KABeOTxDqQtdDnaFuUN30b8=
+@@ -560,6 +583,8 @@ github.com/uber/jaeger-lib v2.4.1+incompatible h1:td4jdvLcExb4cBISKIpHuGoVXh+dVK
+ github.com/uber/jaeger-lib v2.4.1+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6+uUTzImX/AauajbLI56U=
  github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
  github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
 +github.com/valyala/fastjson v1.6.4 h1:uAUNq9Z6ymTgGhcm0UynUAB6tlbakBrz6CQFax3BXVQ=
 +github.com/valyala/fastjson v1.6.4/go.mod h1:CLCAqky6SMuOcxStkYQvblddUtoRxhYMGLrsQns1aXY=
- github.com/vbatts/tar-split v0.11.3 h1:hLFqsOLQ1SsppQNTMpkpPXClLDfC2A3Zgy9OUU+RVck=
- github.com/vbatts/tar-split v0.11.3/go.mod h1:9QlHN18E+fEH7RdG+QAJJcuya3rqT7eXSTY7wGrAokY=
+ github.com/vbatts/tar-split v0.12.2 h1:w/Y6tjxpeiFMR47yzZPlPj/FcPLpXbTUi/9H7d3CPa4=
+ github.com/vbatts/tar-split v0.12.2/go.mod h1:eF6B6i6ftWQcDqEn3/iGFRFRo8cBIMSJVOpnNdfTMFA=
  github.com/vmihailenco/msgpack/v5 v5.4.1 h1:cQriyiUvjTwOHg8QZaPihLWeRAAVoCpE00IUPn0Bjt8=
 diff --git a/src/lib/config/metadata/metadatalist.go b/src/lib/config/metadata/metadatalist.go
-index 1f800a64f..d503b33d9 100644
+index 0ad4176e32..f0793bd703 100644
 --- a/src/lib/config/metadata/metadatalist.go
 +++ b/src/lib/config/metadata/metadatalist.go
-@@ -193,6 +193,7 @@ var (
+@@ -194,6 +194,7 @@ var (
  		{Name: common.SkipAuditLogDatabase, Scope: UserScope, Group: BasicGroup, EnvKey: "SKIP_LOG_AUDIT_DATABASE", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: `The option to skip audit log in database`},
  		{Name: common.ScannerSkipUpdatePullTime, Scope: UserScope, Group: BasicGroup, EnvKey: "SCANNER_SKIP_UPDATE_PULL_TIME", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: `The option to skip update pull time for scanner`},
  		{Name: common.AuditLogEventsDisabled, Scope: UserScope, Group: BasicGroup, EnvKey: "AUDIT_LOG_EVENTS_DISABLED", DefaultValue: "", ItemType: &StringType{}, Editable: false, Description: `The option to skip audit log for some operations, the key is <operation>_<resource_type> like create_user, delete_user, separated by comma`},
@@ -154804,10 +154803,10 @@ index 1f800a64f..d503b33d9 100644
  		{Name: common.SessionTimeout, Scope: UserScope, Group: BasicGroup, EnvKey: "SESSION_TIMEOUT", DefaultValue: "60", ItemType: &Int64Type{}, Editable: true, Description: `The session timeout in minutes`},
  
 diff --git a/src/lib/config/userconfig.go b/src/lib/config/userconfig.go
-index f5125de1b..3fa753966 100644
+index bcb7b1eaeb..664227b643 100644
 --- a/src/lib/config/userconfig.go
 +++ b/src/lib/config/userconfig.go
-@@ -277,3 +277,8 @@ func AuditLogEventEnabled(ctx context.Context, eventType string) bool {
+@@ -278,3 +278,8 @@ func AuditLogEventEnabled(ctx context.Context, eventType string) bool {
  	}
  	return true
  }
@@ -154818,7 +154817,7 @@ index f5125de1b..3fa753966 100644
 +}
 diff --git a/src/pkg/federatedidp/REQUIREMENTS.md b/src/pkg/federatedidp/REQUIREMENTS.md
 new file mode 100644
-index 000000000..3fc8a97bc
+index 0000000000..3fc8a97bc1
 --- /dev/null
 +++ b/src/pkg/federatedidp/REQUIREMENTS.md
 @@ -0,0 +1,491 @@
@@ -155315,7 +155314,7 @@ index 000000000..3fc8a97bc
 +- [x] Error index reported correctly in batch validation
 diff --git a/src/pkg/federatedidp/dao/dao.go b/src/pkg/federatedidp/dao/dao.go
 new file mode 100644
-index 000000000..8a1aa4755
+index 0000000000..8a1aa47555
 --- /dev/null
 +++ b/src/pkg/federatedidp/dao/dao.go
 @@ -0,0 +1,656 @@
@@ -155977,7 +155976,7 @@ index 000000000..8a1aa4755
 +}
 diff --git a/src/pkg/federatedidp/dao/dao_test.go b/src/pkg/federatedidp/dao/dao_test.go
 new file mode 100644
-index 000000000..fc6a78bbf
+index 0000000000..fc6a78bbf0
 --- /dev/null
 +++ b/src/pkg/federatedidp/dao/dao_test.go
 @@ -0,0 +1,1022 @@
@@ -157005,7 +157004,7 @@ index 000000000..fc6a78bbf
 +}
 diff --git a/src/pkg/federatedidp/manager.go b/src/pkg/federatedidp/manager.go
 new file mode 100644
-index 000000000..b4541daf0
+index 0000000000..b4541daf00
 --- /dev/null
 +++ b/src/pkg/federatedidp/manager.go
 @@ -0,0 +1,218 @@
@@ -157229,7 +157228,7 @@ index 000000000..b4541daf0
 +}
 diff --git a/src/pkg/federatedidp/model/model.go b/src/pkg/federatedidp/model/model.go
 new file mode 100644
-index 000000000..f598126bf
+index 0000000000..f598126bf9
 --- /dev/null
 +++ b/src/pkg/federatedidp/model/model.go
 @@ -0,0 +1,136 @@
@@ -157371,7 +157370,7 @@ index 000000000..f598126bf
 +}
 diff --git a/src/portal/CLAUDE.md b/src/portal/CLAUDE.md
 new file mode 100644
-index 000000000..d91dd6f98
+index 0000000000..d91dd6f989
 --- /dev/null
 +++ b/src/portal/CLAUDE.md
 @@ -0,0 +1,300 @@
@@ -157676,7 +157675,7 @@ index 000000000..d91dd6f98
 +2. **Claims not filtering correctly**: Check `robot_id` type (number vs string) - use `+value` for conversion
 +3. **Form validation not updating**: Call validation method on `(ngModelChange)` or `(blur)` events
 diff --git a/src/portal/src/app/base/base.module.ts b/src/portal/src/app/base/base.module.ts
-index 6beb77fe6..4f7767c80 100644
+index 6beb77fe64..4f7767c807 100644
 --- a/src/portal/src/app/base/base.module.ts
 +++ b/src/portal/src/app/base/base.module.ts
 @@ -75,6 +75,14 @@ const routes: Routes = [
@@ -157695,7 +157694,7 @@ index 6beb77fe6..4f7767c80 100644
                  path: 'replications',
                  canActivate: [SystemAdminGuard],
 diff --git a/src/portal/src/app/base/harbor-shell/harbor-shell.component.html b/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
-index efe2c8129..e04aa3c6d 100644
+index efe2c8129b..e04aa3c6d0 100644
 --- a/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
 +++ b/src/portal/src/app/base/harbor-shell/harbor-shell.component.html
 @@ -82,6 +82,15 @@
@@ -157715,7 +157714,7 @@ index efe2c8129..e04aa3c6d 100644
                              clrVerticalNavLink
                              routerLink="/harbor/replications"
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.component.html b/src/portal/src/app/base/left-side-nav/config/config.component.html
-index 007f8562b..d3676794e 100644
+index 007f8562b3..d3676794e6 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.component.html
 +++ b/src/portal/src/app/base/left-side-nav/config/config.component.html
 @@ -47,6 +47,16 @@
@@ -157736,7 +157735,7 @@ index 007f8562b..d3676794e 100644
      </div>
  </div>
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.module.ts b/src/portal/src/app/base/left-side-nav/config/config.module.ts
-index 2a9acabcc..abcdf3e33 100644
+index 2a9acabcc6..abcdf3e332 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.module.ts
 +++ b/src/portal/src/app/base/left-side-nav/config/config.module.ts
 @@ -22,6 +22,7 @@ import { ConfigService } from './config.service';
@@ -157768,7 +157767,7 @@ index 2a9acabcc..abcdf3e33 100644
  })
 diff --git a/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.html b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.html
 new file mode 100644
-index 000000000..4436c8e4f
+index 0000000000..4436c8e4f4
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.html
 @@ -0,0 +1,53 @@
@@ -157827,7 +157826,7 @@ index 000000000..4436c8e4f
 +</div>
 diff --git a/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.scss b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.scss
 new file mode 100644
-index 000000000..9f1464eac
+index 0000000000..9f1464eaca
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.scss
 @@ -0,0 +1,16 @@
@@ -157849,7 +157848,7 @@ index 000000000..9f1464eac
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.spec.ts b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.spec.ts
 new file mode 100644
-index 000000000..ee5b37c84
+index 0000000000..ee5b37c846
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.spec.ts
 @@ -0,0 +1,98 @@
@@ -157953,7 +157952,7 @@ index 000000000..ee5b37c84
 +});
 diff --git a/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.ts b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.ts
 new file mode 100644
-index 000000000..aec888a72
+index 0000000000..aec888a720
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.ts
 @@ -0,0 +1,178 @@
@@ -158137,7 +158136,7 @@ index 000000000..aec888a72
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.html b/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.html
 new file mode 100644
-index 000000000..595c644d0
+index 0000000000..595c644d0f
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.html
 @@ -0,0 +1,292 @@
@@ -158435,7 +158434,7 @@ index 000000000..595c644d0
 +</clr-modal>
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.scss b/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.scss
 new file mode 100644
-index 000000000..ece623bbb
+index 0000000000..ece623bbb6
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.scss
 @@ -0,0 +1,110 @@
@@ -158551,7 +158550,7 @@ index 000000000..ece623bbb
 +  }
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.ts b/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.ts
 new file mode 100644
-index 000000000..531eba746
+index 0000000000..531eba7463
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.ts
 @@ -0,0 +1,1510 @@
@@ -160067,7 +160066,7 @@ index 000000000..531eba746
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.html b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.html
 new file mode 100644
-index 000000000..43b51ae5e
+index 0000000000..43b51ae5e7
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.html
 @@ -0,0 +1,137 @@
@@ -160210,7 +160209,7 @@ index 000000000..43b51ae5e
 +</div>
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.scss b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.scss
 new file mode 100644
-index 000000000..02bcbfc87
+index 0000000000..02bcbfc874
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.scss
 @@ -0,0 +1,63 @@
@@ -160279,7 +160278,7 @@ index 000000000..02bcbfc87
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.spec.ts b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.spec.ts
 new file mode 100644
-index 000000000..059161f81
+index 0000000000..059161f81c
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.spec.ts
 @@ -0,0 +1,13 @@
@@ -160298,7 +160297,7 @@ index 000000000..059161f81
 +// limitations under the License.
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.ts b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.ts
 new file mode 100644
-index 000000000..7508a18d7
+index 0000000000..7508a18d7a
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.ts
 @@ -0,0 +1,325 @@
@@ -160629,7 +160628,7 @@ index 000000000..7508a18d7
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/idp.module.ts b/src/portal/src/app/base/left-side-nav/federated-idps/idp.module.ts
 new file mode 100644
-index 000000000..1abe54a55
+index 0000000000..1abe54a55a
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/idp.module.ts
 @@ -0,0 +1,33 @@
@@ -160667,7 +160666,7 @@ index 000000000..1abe54a55
 +})
 +export class IdpModule {}
 diff --git a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.html b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.html
-index 0112e887e..015d572c8 100644
+index 0112e887e5..015d572c8f 100644
 --- a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.html
 +++ b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.html
 @@ -242,6 +242,216 @@
@@ -160888,7 +160887,7 @@ index 0112e887e..015d572c8 100644
          </form>
      </clr-wizard-page>
 diff --git a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.scss b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.scss
-index f5fd8155f..1f994058b 100644
+index f5fd8155fd..1f994058b1 100644
 --- a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.scss
 +++ b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.scss
 @@ -2,6 +2,27 @@
@@ -160920,7 +160919,7 @@ index f5fd8155f..1f994058b 100644
    width: 350px;
  }
 diff --git a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.spec.ts b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.spec.ts
-index d6d962fc1..f9da0a536 100644
+index d6d962fc1c..f9da0a536e 100644
 --- a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.spec.ts
 +++ b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.spec.ts
 @@ -22,11 +22,13 @@ import { Action, PermissionsKinds, Resource } from '../system-robot-util';
@@ -160972,7 +160971,7 @@ index d6d962fc1..f9da0a536 100644
              schemas: [NO_ERRORS_SCHEMA],
          }).compileComponents();
 diff --git a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.ts b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.ts
-index 5a297db96..bf385c5cf 100644
+index 5a297db96c..bf385c5cff 100644
 --- a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.ts
 +++ b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.ts
 @@ -61,9 +61,24 @@ import { errorHandler } from '../../../../shared/units/shared.utils';
@@ -161907,7 +161906,7 @@ index 5a297db96..bf385c5cf 100644
      protected readonly PermissionSelectPanelModes = PermissionSelectPanelModes;
  }
 diff --git a/src/portal/src/app/base/left-side-nav/system-robot-accounts/system-robot-accounts.component.html b/src/portal/src/app/base/left-side-nav/system-robot-accounts/system-robot-accounts.component.html
-index 25da55842..d37a64d14 100644
+index 25da55842f..d37a64d14c 100644
 --- a/src/portal/src/app/base/left-side-nav/system-robot-accounts/system-robot-accounts.component.html
 +++ b/src/portal/src/app/base/left-side-nav/system-robot-accounts/system-robot-accounts.component.html
 @@ -136,6 +136,9 @@
@@ -161929,7 +161928,7 @@ index 25da55842..d37a64d14 100644
                      <span *ngIf="!getSystemAccess(r)?.length">
                          {{ 'SCHEDULE.NONE' | translate }}
 diff --git a/src/portal/src/app/base/left-side-nav/system-robot-accounts/system-robot-accounts.component.ts b/src/portal/src/app/base/left-side-nav/system-robot-accounts/system-robot-accounts.component.ts
-index 5a0d6fa22..3e09c5135 100644
+index 5a0d6fa224..3e09c51357 100644
 --- a/src/portal/src/app/base/left-side-nav/system-robot-accounts/system-robot-accounts.component.ts
 +++ b/src/portal/src/app/base/left-side-nav/system-robot-accounts/system-robot-accounts.component.ts
 @@ -15,6 +15,7 @@ import { Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
@@ -161992,7 +161991,7 @@ index 5a0d6fa22..3e09c5135 100644
              this.pageSize = state.page.size;
 diff --git a/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.html b/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.html
 new file mode 100644
-index 000000000..f56f3bfbd
+index 0000000000..f56f3bfbdd
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.html
 @@ -0,0 +1,292 @@
@@ -162290,7 +162289,7 @@ index 000000000..f56f3bfbd
 +</clr-modal>
 diff --git a/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.scss b/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.scss
 new file mode 100644
-index 000000000..ece623bbb
+index 0000000000..ece623bbb6
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.scss
 @@ -0,0 +1,110 @@
@@ -162406,7 +162405,7 @@ index 000000000..ece623bbb
 +  }
 diff --git a/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.ts b/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.ts
 new file mode 100644
-index 000000000..66d5629af
+index 0000000000..66d5629aff
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.ts
 @@ -0,0 +1,1387 @@
@@ -163799,7 +163798,7 @@ index 000000000..66d5629af
 +}
 diff --git a/src/portal/src/app/base/project/federated-idp/federated-idp.component.html b/src/portal/src/app/base/project/federated-idp/federated-idp.component.html
 new file mode 100644
-index 000000000..cd28fd01e
+index 0000000000..cd28fd01ec
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/federated-idp.component.html
 @@ -0,0 +1,139 @@
@@ -163944,7 +163943,7 @@ index 000000000..cd28fd01e
 +</div>
 diff --git a/src/portal/src/app/base/project/federated-idp/federated-idp.component.scss b/src/portal/src/app/base/project/federated-idp/federated-idp.component.scss
 new file mode 100644
-index 000000000..02bcbfc87
+index 0000000000..02bcbfc874
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/federated-idp.component.scss
 @@ -0,0 +1,63 @@
@@ -164013,7 +164012,7 @@ index 000000000..02bcbfc87
 +}
 diff --git a/src/portal/src/app/base/project/federated-idp/federated-idp.component.spec.ts b/src/portal/src/app/base/project/federated-idp/federated-idp.component.spec.ts
 new file mode 100644
-index 000000000..de7b78280
+index 0000000000..de7b782806
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/federated-idp.component.spec.ts
 @@ -0,0 +1,513 @@
@@ -164532,7 +164531,7 @@ index 000000000..de7b78280
 +});
 diff --git a/src/portal/src/app/base/project/federated-idp/federated-idp.component.ts b/src/portal/src/app/base/project/federated-idp/federated-idp.component.ts
 new file mode 100644
-index 000000000..1d38458e8
+index 0000000000..1d38458e8b
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/federated-idp.component.ts
 @@ -0,0 +1,377 @@
@@ -164915,7 +164914,7 @@ index 000000000..1d38458e8
 +}
 diff --git a/src/portal/src/app/base/project/federated-idp/project-federated-idp.module.ts b/src/portal/src/app/base/project/federated-idp/project-federated-idp.module.ts
 new file mode 100644
-index 000000000..f54d75e72
+index 0000000000..f54d75e727
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/project-federated-idp.module.ts
 @@ -0,0 +1,30 @@
@@ -164950,7 +164949,7 @@ index 000000000..f54d75e72
 +})
 +export class ProjectFederatedIdpModule {}
 diff --git a/src/portal/src/app/base/project/project-detail/project-detail.component.spec.ts b/src/portal/src/app/base/project/project-detail/project-detail.component.spec.ts
-index e856683a1..446b8b789 100644
+index e856683a1c..446b8b7892 100644
 --- a/src/portal/src/app/base/project/project-detail/project-detail.component.spec.ts
 +++ b/src/portal/src/app/base/project/project-detail/project-detail.component.spec.ts
 @@ -32,6 +32,7 @@ import {
@@ -164984,7 +164983,7 @@ index e856683a1..446b8b789 100644
          }).compileComponents();
      });
 diff --git a/src/portal/src/app/base/project/project-detail/project-detail.component.ts b/src/portal/src/app/base/project/project-detail/project-detail.component.ts
-index abd2f50bb..c4c7fb700 100644
+index abd2f50bbc..c4c7fb7007 100644
 --- a/src/portal/src/app/base/project/project-detail/project-detail.component.ts
 +++ b/src/portal/src/app/base/project/project-detail/project-detail.component.ts
 @@ -30,6 +30,7 @@ import {
@@ -165089,7 +165088,7 @@ index abd2f50bb..c4c7fb700 100644
                      this.hasTagRetentionPermission,
                      this.hasTagImmutablePermission,
 diff --git a/src/portal/src/app/base/project/project.module.ts b/src/portal/src/app/base/project/project.module.ts
-index 6660ffb8c..710477385 100644
+index 6660ffb8c3..710477385d 100644
 --- a/src/portal/src/app/base/project/project.module.ts
 +++ b/src/portal/src/app/base/project/project.module.ts
 @@ -119,6 +119,20 @@ const routes: Routes = [
@@ -165114,7 +165113,7 @@ index 6660ffb8c..710477385 100644
                  path: 'tag-strategy',
                  canActivate: [MemberPermissionGuard],
 diff --git a/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.html b/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.html
-index fd27bd417..86d1e0325 100644
+index fd27bd4175..86d1e0325c 100644
 --- a/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.html
 +++ b/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.html
 @@ -230,6 +230,205 @@
@@ -165324,7 +165323,7 @@ index fd27bd417..86d1e0325 100644
          </form>
      </clr-wizard-page>
 diff --git a/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.scss b/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.scss
-index ce53431ce..702d72a15 100644
+index ce53431ceb..702d72a15b 100644
 --- a/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.scss
 +++ b/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.scss
 @@ -1,3 +1,31 @@
@@ -165423,7 +165422,7 @@ index ce53431ce..702d72a15 100644
 +  width: 48rem;
  }
 diff --git a/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.ts b/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.ts
-index 48e1072bc..e410abd80 100644
+index 48e1072bc4..e410abd80a 100644
 --- a/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.ts
 +++ b/src/portal/src/app/base/project/robot-account/add-robot/add-robot.component.ts
 @@ -40,6 +40,7 @@ import { NgForm } from '@angular/forms';
@@ -165901,7 +165900,7 @@ index 48e1072bc..e410abd80 100644
          if (this.robot && this.robot.creation_time && this.robot.duration > 0) {
              return new Date(
 diff --git a/src/portal/src/app/base/project/robot-account/robot-account.component.html b/src/portal/src/app/base/project/robot-account/robot-account.component.html
-index 29b258350..a9bc6124c 100644
+index 29b258350f..a9bc6124cb 100644
 --- a/src/portal/src/app/base/project/robot-account/robot-account.component.html
 +++ b/src/portal/src/app/base/project/robot-account/robot-account.component.html
 @@ -132,6 +132,7 @@
@@ -165941,7 +165940,7 @@ index 29b258350..a9bc6124c 100644
      (addSuccess)="addSuccess($event)"></add-robot>
  <view-token (refreshSuccess)="refresh()"></view-token>
 diff --git a/src/portal/src/app/base/project/robot-account/robot-account.component.spec.ts b/src/portal/src/app/base/project/robot-account/robot-account.component.spec.ts
-index d965d66b1..adaf0bc7b 100644
+index d965d66b1d..adaf0bc7b1 100644
 --- a/src/portal/src/app/base/project/robot-account/robot-account.component.spec.ts
 +++ b/src/portal/src/app/base/project/robot-account/robot-account.component.spec.ts
 @@ -13,15 +13,17 @@
@@ -166276,7 +166275,7 @@ index d965d66b1..adaf0bc7b 100644
 +    });
  });
 diff --git a/src/portal/src/app/base/project/robot-account/robot-account.component.ts b/src/portal/src/app/base/project/robot-account/robot-account.component.ts
-index 61703779e..bd9b6f552 100644
+index 61703779e9..bd9b6f552d 100644
 --- a/src/portal/src/app/base/project/robot-account/robot-account.component.ts
 +++ b/src/portal/src/app/base/project/robot-account/robot-account.component.ts
 @@ -39,6 +39,7 @@ import { FilterComponent } from '../../../shared/components/filter/filter.compon
@@ -166442,7 +166441,7 @@ index 61703779e..bd9b6f552 100644
              error => this.msgHandler.error(error)
          );
 diff --git a/src/portal/src/app/shared/components/view-token/view-token.component.html b/src/portal/src/app/shared/components/view-token/view-token.component.html
-index e4f2d2684..f5b195832 100644
+index e4f2d26844..f5b195832b 100644
 --- a/src/portal/src/app/shared/components/view-token/view-token.component.html
 +++ b/src/portal/src/app/shared/components/view-token/view-token.component.html
 @@ -186,7 +186,9 @@
@@ -166539,7 +166538,7 @@ index e4f2d2684..f5b195832 100644
      </div>
  </clr-modal>
 diff --git a/src/portal/src/app/shared/components/view-token/view-token.component.ts b/src/portal/src/app/shared/components/view-token/view-token.component.ts
-index 5627b7aa0..5cb905462 100644
+index 5627b7aa0f..5cb905462d 100644
 --- a/src/portal/src/app/shared/components/view-token/view-token.component.ts
 +++ b/src/portal/src/app/shared/components/view-token/view-token.component.ts
 @@ -11,7 +11,14 @@
@@ -166726,7 +166725,7 @@ index 5627b7aa0..5cb905462 100644
          this.copyToken = false;
 diff --git a/src/portal/src/app/shared/services/federated-idp.service.ts b/src/portal/src/app/shared/services/federated-idp.service.ts
 new file mode 100644
-index 000000000..201372dfe
+index 0000000000..201372dfe0
 --- /dev/null
 +++ b/src/portal/src/app/shared/services/federated-idp.service.ts
 @@ -0,0 +1,299 @@
@@ -167030,7 +167029,7 @@ index 000000000..201372dfe
 +    }
 +}
 diff --git a/src/portal/src/app/shared/services/index.ts b/src/portal/src/app/shared/services/index.ts
-index ecf61612f..c6db5590e 100644
+index ecf61612f4..c6db5590e7 100644
 --- a/src/portal/src/app/shared/services/index.ts
 +++ b/src/portal/src/app/shared/services/index.ts
 @@ -21,3 +21,4 @@ export * from './project.service';
@@ -167039,7 +167038,7 @@ index ecf61612f..c6db5590e 100644
  export * from './permission-static';
 +export * from './federated-idp.service';
 diff --git a/src/portal/src/app/shared/services/permission-static.ts b/src/portal/src/app/shared/services/permission-static.ts
-index bc9c862e3..0ec5aea61 100644
+index bc9c862e3d..0ec5aea618 100644
 --- a/src/portal/src/app/shared/services/permission-static.ts
 +++ b/src/portal/src/app/shared/services/permission-static.ts
 @@ -132,6 +132,16 @@ export const USERSTATICPERMISSION = {
@@ -167060,7 +167059,7 @@ index bc9c862e3..0ec5aea61 100644
          KEY: 'robot',
          VALUE: {
 diff --git a/src/portal/src/i18n/lang/de-de-lang.json b/src/portal/src/i18n/lang/de-de-lang.json
-index 427895771..65cf8947a 100644
+index 01b5f50558..4b3a8b8f33 100644
 --- a/src/portal/src/i18n/lang/de-de-lang.json
 +++ b/src/portal/src/i18n/lang/de-de-lang.json
 @@ -160,6 +160,7 @@
@@ -167083,7 +167082,7 @@ index 427895771..65cf8947a 100644
          "REPLICATION_TRIGGER": "Trigger",
          "PUSH_BASED_ONLY": "Only for the push-based replication",
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index 2467998e2..5f12b4d5e 100644
+index 8d7773dfb6..9699cfb310 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
 @@ -16,6 +16,7 @@
@@ -167186,7 +167185,7 @@ index 2467998e2..5f12b4d5e 100644
              "SELF_REGISTRATION_ENABLE": "Enable sign up.",
              "SELF_REGISTRATION_DISABLE": "Deactivate sign up.",
              "VERIFY_REMOTE_CERT": "Determine whether the image replication should verify the certificate of a remote Harbor registry. Uncheck this box when the remote registry uses a self-signed or untrusted certificate.",
-@@ -1176,6 +1218,7 @@
+@@ -1178,6 +1220,7 @@
          "ADD_GROUP": "Add group member",
          "ADD_USER": "Add user member",
          "DELETE_LABEL": "Delete label",
@@ -167194,7 +167193,7 @@ index 2467998e2..5f12b4d5e 100644
          "REPLICATION": "Replication",
          "DAY_AGO": " day(s) ago",
          "HOUR_AGO": " hour(s) ago",
-@@ -1611,6 +1654,10 @@
+@@ -1624,6 +1667,10 @@
          "PAGE_SIZE": "Page size"
      },
      "SYSTEM_ROBOT": {
@@ -167205,7 +167204,7 @@ index 2467998e2..5f12b4d5e 100644
          "READ": "Read",
          "CREATE": "Create",
          "ARTIFACT": "Artifact",
-@@ -1680,6 +1727,7 @@
+@@ -1693,6 +1740,7 @@
          "FINAL_SYSTEM_NAME_TIP": "The final system robot name consists of the prefix and the current input value",
          "PUSH_AND_PULL": "Push",
          "PUSH_PERMISSION_TOOLTIP": "Push permission can not work alone, it must work with pull permission",
@@ -167214,7 +167213,7 @@ index 2467998e2..5f12b4d5e 100644
          "LIST": "List",
          "REPOSITORY": "Repository",
 diff --git a/src/portal/src/i18n/lang/es-es-lang.json b/src/portal/src/i18n/lang/es-es-lang.json
-index 91c358c3c..479dda617 100644
+index 28d7c38bcf..30a1389211 100644
 --- a/src/portal/src/i18n/lang/es-es-lang.json
 +++ b/src/portal/src/i18n/lang/es-es-lang.json
 @@ -159,6 +159,7 @@
@@ -167237,7 +167236,7 @@ index 91c358c3c..479dda617 100644
          "REPLICATION_TRIGGER": "Disparador",
          "PUSH_BASED_ONLY": "Solo para replicación push-based",
 diff --git a/src/portal/src/i18n/lang/fr-fr-lang.json b/src/portal/src/i18n/lang/fr-fr-lang.json
-index a195ff3ef..c6aafa595 100644
+index daed73e745..1cbe86d271 100644
 --- a/src/portal/src/i18n/lang/fr-fr-lang.json
 +++ b/src/portal/src/i18n/lang/fr-fr-lang.json
 @@ -160,6 +160,7 @@
@@ -167260,7 +167259,7 @@ index a195ff3ef..c6aafa595 100644
          "REPLICATION_TRIGGER": "Déclencheur",
          "PUSH_BASED_ONLY": "Uniquement pour la réplication de type push",
 diff --git a/src/portal/src/i18n/lang/ko-kr-lang.json b/src/portal/src/i18n/lang/ko-kr-lang.json
-index e8cb2b278..25bce703f 100644
+index 4c4557bbba..72c97c800a 100644
 --- a/src/portal/src/i18n/lang/ko-kr-lang.json
 +++ b/src/portal/src/i18n/lang/ko-kr-lang.json
 @@ -160,6 +160,7 @@
@@ -167283,7 +167282,7 @@ index e8cb2b278..25bce703f 100644
          "REPLICATION_TRIGGER": "트리거",
          "PUSH_BASED_ONLY": "푸시 기반 복제에만 해당됩니다",
 diff --git a/src/portal/src/i18n/lang/pt-br-lang.json b/src/portal/src/i18n/lang/pt-br-lang.json
-index 21f23a6fe..3e2131405 100644
+index 6cd53b3374..a3b3d138f5 100644
 --- a/src/portal/src/i18n/lang/pt-br-lang.json
 +++ b/src/portal/src/i18n/lang/pt-br-lang.json
 @@ -160,6 +160,7 @@
@@ -167306,10 +167305,10 @@ index 21f23a6fe..3e2131405 100644
          "REPLICATION_TRIGGER": "Gatilho",
          "PUSH_BASED_ONLY": "Only for the push-based replication",
 diff --git a/src/portal/src/i18n/lang/tr-tr-lang.json b/src/portal/src/i18n/lang/tr-tr-lang.json
-index 7ef019335..2a17c2d4b 100644
+index 3148775a90..45a166cb82 100644
 --- a/src/portal/src/i18n/lang/tr-tr-lang.json
 +++ b/src/portal/src/i18n/lang/tr-tr-lang.json
-@@ -161,6 +161,7 @@
+@@ -160,6 +160,7 @@
              "USER": "Kullanıcılar",
              "GROUP": "Gruplar",
              "REGISTRY": "Kayıt",
@@ -167317,7 +167316,7 @@ index 7ef019335..2a17c2d4b 100644
              "REPLICATION": "Kopyalama",
              "CONFIG": "Yapılandırma",
              "VULNERABILITY": "Güvenlik Açığı",
-@@ -498,6 +499,10 @@
+@@ -497,6 +498,10 @@
          "RESOURCE": "Resource",
          "RESOURCE_TYPE": "Resource Type"
      },
@@ -167329,7 +167328,7 @@ index 7ef019335..2a17c2d4b 100644
          "REPLICATION_TRIGGER": "Tetikleyici",
          "PUSH_BASED_ONLY": "Only for the push-based replication",
 diff --git a/src/portal/src/i18n/lang/zh-cn-lang.json b/src/portal/src/i18n/lang/zh-cn-lang.json
-index 100e56e67..cb28f0cca 100644
+index 480b4c6ab2..8db93a3134 100644
 --- a/src/portal/src/i18n/lang/zh-cn-lang.json
 +++ b/src/portal/src/i18n/lang/zh-cn-lang.json
 @@ -160,6 +160,7 @@
@@ -167352,7 +167351,7 @@ index 100e56e67..cb28f0cca 100644
          "REPLICATION_TRIGGER": "触发器",
          "PUSH_BASED_ONLY": "仅针对于 Push-Based 模式下的复制操作",
 diff --git a/src/portal/src/i18n/lang/zh-tw-lang.json b/src/portal/src/i18n/lang/zh-tw-lang.json
-index 85663bcc2..5ee2c33a2 100644
+index e3477d43b6..c536284f4d 100644
 --- a/src/portal/src/i18n/lang/zh-tw-lang.json
 +++ b/src/portal/src/i18n/lang/zh-tw-lang.json
 @@ -160,6 +160,7 @@
@@ -167375,7 +167374,7 @@ index 85663bcc2..5ee2c33a2 100644
          "REPLICATION_TRIGGER": "觸發器",
          "PUSH_BASED_ONLY": "僅適用於推送模式的複製",
 diff --git a/src/server/middleware/security/basic_auth.go b/src/server/middleware/security/basic_auth.go
-index 10d2f7625..97fd9f330 100644
+index 10d2f7625e..97fd9f3304 100644
 --- a/src/server/middleware/security/basic_auth.go
 +++ b/src/server/middleware/security/basic_auth.go
 @@ -17,6 +17,8 @@ package security
@@ -167430,7 +167429,7 @@ index 10d2f7625..97fd9f330 100644
  		Password:  password,
 diff --git a/src/server/middleware/security/jwkscache/cache.go b/src/server/middleware/security/jwkscache/cache.go
 new file mode 100644
-index 000000000..0ccaba3a7
+index 0000000000..0ccaba3a7e
 --- /dev/null
 +++ b/src/server/middleware/security/jwkscache/cache.go
 @@ -0,0 +1,68 @@
@@ -167504,7 +167503,7 @@ index 000000000..0ccaba3a7
 +}
 diff --git a/src/server/middleware/security/jwkscache/manager.go b/src/server/middleware/security/jwkscache/manager.go
 new file mode 100644
-index 000000000..28a119e8f
+index 0000000000..28a119e8f1
 --- /dev/null
 +++ b/src/server/middleware/security/jwkscache/manager.go
 @@ -0,0 +1,267 @@
@@ -167777,7 +167776,7 @@ index 000000000..28a119e8f
 +}
 diff --git a/src/server/middleware/security/jwthandler/jwthandler.go b/src/server/middleware/security/jwthandler/jwthandler.go
 new file mode 100644
-index 000000000..bfca92f9d
+index 0000000000..bfca92f9dd
 --- /dev/null
 +++ b/src/server/middleware/security/jwthandler/jwthandler.go
 @@ -0,0 +1,92 @@
@@ -167875,7 +167874,7 @@ index 000000000..bfca92f9d
 +}
 diff --git a/src/server/middleware/security/jwthandler/jwthandler_test.go b/src/server/middleware/security/jwthandler/jwthandler_test.go
 new file mode 100644
-index 000000000..6250da410
+index 0000000000..6250da410b
 --- /dev/null
 +++ b/src/server/middleware/security/jwthandler/jwthandler_test.go
 @@ -0,0 +1,219 @@
@@ -168100,7 +168099,7 @@ index 000000000..6250da410
 +}
 diff --git a/src/server/middleware/security/robotjwt.go b/src/server/middleware/security/robotjwt.go
 new file mode 100644
-index 000000000..49e3ebb72
+index 0000000000..49e3ebb72c
 --- /dev/null
 +++ b/src/server/middleware/security/robotjwt.go
 @@ -0,0 +1,569 @@
@@ -168675,7 +168674,7 @@ index 000000000..49e3ebb72
 +}
 diff --git a/src/server/middleware/security/robotjwt_test.go b/src/server/middleware/security/robotjwt_test.go
 new file mode 100644
-index 000000000..4bb626ac1
+index 0000000000..4bb626ac1a
 --- /dev/null
 +++ b/src/server/middleware/security/robotjwt_test.go
 @@ -0,0 +1,611 @@
@@ -169291,7 +169290,7 @@ index 000000000..4bb626ac1
 +	})
 +}
 diff --git a/src/server/middleware/security/security.go b/src/server/middleware/security/security.go
-index 8ecefc65f..b5727f7a3 100644
+index 8ecefc65fc..b5727f7a3b 100644
 --- a/src/server/middleware/security/security.go
 +++ b/src/server/middleware/security/security.go
 @@ -28,6 +28,7 @@ var (
@@ -169304,7 +169303,7 @@ index 8ecefc65f..b5727f7a3 100644
  		&authProxy{},
 diff --git a/src/server/v2.0/handler/federated_idp.go b/src/server/v2.0/handler/federated_idp.go
 new file mode 100644
-index 000000000..f286e984c
+index 0000000000..f286e984ca
 --- /dev/null
 +++ b/src/server/v2.0/handler/federated_idp.go
 @@ -0,0 +1,1044 @@
@@ -170354,7 +170353,7 @@ index 000000000..f286e984c
 +// as it allows modification of immutable fields
 diff --git a/src/server/v2.0/handler/federated_idp_test.go b/src/server/v2.0/handler/federated_idp_test.go
 new file mode 100644
-index 000000000..0cddaaaab
+index 0000000000..0cddaaaab9
 --- /dev/null
 +++ b/src/server/v2.0/handler/federated_idp_test.go
 @@ -0,0 +1,2242 @@
@@ -172601,7 +172600,7 @@ index 000000000..0cddaaaab
 +	}
 +}
 diff --git a/src/server/v2.0/handler/handler.go b/src/server/v2.0/handler/handler.go
-index 25d74e98c..5912ea275 100644
+index 25d74e98c0..5912ea2752 100644
 --- a/src/server/v2.0/handler/handler.go
 +++ b/src/server/v2.0/handler/handler.go
 @@ -46,6 +46,7 @@ func New() http.Handler {
@@ -172613,7 +172612,7 @@ index 25d74e98c..5912ea275 100644
  		PingAPI:               newPingAPI(),
  		LdapAPI:               newLdapAPI(),
 diff --git a/src/server/v2.0/handler/label.go b/src/server/v2.0/handler/label.go
-index 80bc1b1ec..01b8d0803 100644
+index 80bc1b1ec3..01b8d0803e 100644
 --- a/src/server/v2.0/handler/label.go
 +++ b/src/server/v2.0/handler/label.go
 @@ -17,8 +17,10 @@ package handler
@@ -172646,7 +172645,7 @@ index 80bc1b1ec..01b8d0803 100644
  	}
 diff --git a/src/server/v2.0/handler/model/federated_idp.go b/src/server/v2.0/handler/model/federated_idp.go
 new file mode 100644
-index 000000000..c29f54a2e
+index 0000000000..c29f54a2e8
 --- /dev/null
 +++ b/src/server/v2.0/handler/model/federated_idp.go
 @@ -0,0 +1,112 @@
@@ -172763,7 +172762,7 @@ index 000000000..c29f54a2e
 +	}
 +}
 diff --git a/src/server/v2.0/handler/model/robot.go b/src/server/v2.0/handler/model/robot.go
-index ee3c9e951..825b516ce 100644
+index ee3c9e951d..825b516cea 100644
 --- a/src/server/v2.0/handler/model/robot.go
 +++ b/src/server/v2.0/handler/model/robot.go
 @@ -40,19 +40,20 @@ func (r *Robot) ToSwagger() *models.Robot {
@@ -172801,7 +172800,7 @@ index ee3c9e951..825b516ce 100644
  }
  
 diff --git a/src/server/v2.0/handler/project.go b/src/server/v2.0/handler/project.go
-index de75072b8..c66471277 100644
+index de75072b8c..c66471277b 100644
 --- a/src/server/v2.0/handler/project.go
 +++ b/src/server/v2.0/handler/project.go
 @@ -31,6 +31,7 @@ import (
@@ -172841,7 +172840,7 @@ index de75072b8..c66471277 100644
  	q, err := a.quotaCtl.GetByRef(ctx, quota.ProjectReference, referenceID)
  	if err != nil {
 diff --git a/src/server/v2.0/handler/robot.go b/src/server/v2.0/handler/robot.go
-index a49d52cc7..534757125 100644
+index a49d52cc7b..5347571250 100644
 --- a/src/server/v2.0/handler/robot.go
 +++ b/src/server/v2.0/handler/robot.go
 @@ -29,9 +29,11 @@ import (
@@ -173022,7 +173021,7 @@ index a49d52cc7..534757125 100644
  		return rAPI.SendError(ctx, err)
  	}
 diff --git a/src/server/v2.0/handler/robot_test.go b/src/server/v2.0/handler/robot_test.go
-index fdcf326e4..30c9c4e12 100644
+index fdcf326e47..30c9c4e127 100644
 --- a/src/server/v2.0/handler/robot_test.go
 +++ b/src/server/v2.0/handler/robot_test.go
 @@ -1,6 +1,7 @@
@@ -173174,7 +173173,7 @@ index fdcf326e4..30c9c4e12 100644
  	tests := []struct {
  		name          string
 diff --git a/src/server/v2.0/handler/systeminfo.go b/src/server/v2.0/handler/systeminfo.go
-index 834f60fe2..95a1c8dfd 100644
+index 834f60fe2d..95a1c8dfdd 100644
 --- a/src/server/v2.0/handler/systeminfo.go
 +++ b/src/server/v2.0/handler/systeminfo.go
 @@ -148,6 +148,7 @@ func (s *sysInfoAPI) convertInfo(d *si.Data) *models.GeneralInfo {

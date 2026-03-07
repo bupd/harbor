@@ -4,7 +4,7 @@ From: bupd <bupdprasanth@gmail.com>
 
 
 ---
- api/v2.0/swagger.yaml                              |  112 ++++++++
+ api/v2.0/swagger.yaml                              |  110 ++++++++
  .../postgresql/0171_8gears_2.14_branding.up.sql    |    5 
  src/controller/systeminfo/controller.go            |  280 ++++++++++++++++++++
  src/pkg/branding/dao/dao.go                        |   66 +++++
@@ -28,7 +28,7 @@ From: bupd <bupdprasanth@gmail.com>
  .../components/navigator/navigator.component.ts    |   27 ++
  src/portal/src/i18n/lang/en-us-lang.json           |    5 
  src/server/v2.0/handler/systeminfo.go              |   41 +++
- 24 files changed, 1121 insertions(+), 85 deletions(-)
+ 24 files changed, 1120 insertions(+), 84 deletions(-)
  create mode 100644 make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
  create mode 100644 src/pkg/branding/dao/dao.go
  create mode 100644 src/pkg/branding/manager.go
@@ -39,7 +39,7 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index f76136ab7..273c916e2 100644
+index 1171689bbc..4ab8c4d6cf 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
 @@ -4106,6 +4106,59 @@ paths:
@@ -102,7 +102,7 @@ index f76136ab7..273c916e2 100644
    /systeminfo/volumes:
      get:
        summary: Get system volume info (total/free size).
-@@ -8059,6 +8112,63 @@ definitions:
+@@ -8068,6 +8121,63 @@ definitions:
          x-nullable: true
          x-omitempty: true
          description: The OIDC provider name, empty if current auth is not OIDC_auth or OIDC provider is not configured.
@@ -166,18 +166,9 @@ index f76136ab7..273c916e2 100644
    AuthproxySetting:
      type: object
      properties:
-@@ -9441,7 +9551,7 @@ definitions:
-         x-isnullable: true
-       disabled_audit_log_event_types:
-         type: string
--        description: the list to disable log audit event types. 
-+        description: the list to disable log audit event types.
-         x-omitempty: true
-         x-isnullable: true
-   StringConfigItem:
 diff --git a/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql b/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
 new file mode 100644
-index 000000000..f8e246635
+index 0000000000..f8e2466352
 --- /dev/null
 +++ b/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
 @@ -0,0 +1,5 @@
@@ -187,7 +178,7 @@ index 000000000..f8e246635
 +    update_time  TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 +);
 diff --git a/src/controller/systeminfo/controller.go b/src/controller/systeminfo/controller.go
-index e3d40b303..faa54fde9 100644
+index e3d40b303b..faa54fde97 100644
 --- a/src/controller/systeminfo/controller.go
 +++ b/src/controller/systeminfo/controller.go
 @@ -16,10 +16,13 @@ package systeminfo
@@ -521,7 +512,7 @@ index e3d40b303..faa54fde9 100644
  }
 diff --git a/src/pkg/branding/dao/dao.go b/src/pkg/branding/dao/dao.go
 new file mode 100644
-index 000000000..7dbc540b0
+index 0000000000..7dbc540b04
 --- /dev/null
 +++ b/src/pkg/branding/dao/dao.go
 @@ -0,0 +1,66 @@
@@ -593,7 +584,7 @@ index 000000000..7dbc540b0
 +}
 diff --git a/src/pkg/branding/manager.go b/src/pkg/branding/manager.go
 new file mode 100644
-index 000000000..27e048290
+index 0000000000..27e048290d
 --- /dev/null
 +++ b/src/pkg/branding/manager.go
 @@ -0,0 +1,59 @@
@@ -658,7 +649,7 @@ index 000000000..27e048290
 +}
 diff --git a/src/pkg/branding/models/branding.go b/src/pkg/branding/models/branding.go
 new file mode 100644
-index 000000000..f21481801
+index 0000000000..f21481801b
 --- /dev/null
 +++ b/src/pkg/branding/models/branding.go
 @@ -0,0 +1,56 @@
@@ -719,7 +710,7 @@ index 000000000..f21481801
 +	return string(b.Config), nil
 +}
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.html b/src/portal/src/app/account/sign-in/sign-in.component.html
-index 5108d4316..8f5acbb70 100644
+index 5108d43164..8f5acbb70d 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.html
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.html
 @@ -6,7 +6,7 @@
@@ -732,7 +723,7 @@ index 5108d4316..8f5acbb70 100644
          }">
          <form #signInForm="ngForm" class="login">
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.ts b/src/portal/src/app/account/sign-in/sign-in.component.ts
-index c70fbf904..8324ed912 100644
+index e46b99bc69..707ee5f421 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.ts
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.ts
 @@ -38,6 +38,7 @@ import {
@@ -778,7 +769,7 @@ index c70fbf904..8324ed912 100644
              this.redirectUrl = params['redirect_url'] || '';
              let isSignUp = params['sign_up'] || '';
 diff --git a/src/portal/src/app/app.component.ts b/src/portal/src/app/app.component.ts
-index 07c3ce543..5f457b353 100644
+index 07c3ce5437..5f457b353a 100644
 --- a/src/portal/src/app/app.component.ts
 +++ b/src/portal/src/app/app.component.ts
 @@ -36,6 +36,7 @@ import {
@@ -826,18 +817,18 @@ index 07c3ce543..5f457b353 100644
          this.setTheme();
      }
 diff --git a/src/portal/src/app/app.module.ts b/src/portal/src/app/app.module.ts
-index ba80bcaeb..183e3dbd8 100644
+index 7434adc283..497283b94e 100644
 --- a/src/portal/src/app/app.module.ts
 +++ b/src/portal/src/app/app.module.ts
-@@ -40,6 +40,7 @@ import {
- import { ErrorHandler } from './shared/units/error-handler';
+@@ -41,6 +41,7 @@ import { ErrorHandler } from './shared/units/error-handler';
  import { MessageHandlerService } from './shared/services/message-handler.service';
  import { HarborTranslateLoaderService } from './services/harbor-translate-loader.service';
+ import { SharedModule } from './shared/shared.module';
 +import { SysteminfoService } from 'ng-swagger-gen/services';
  
  function initConfig(
      configService: AppConfigService,
-@@ -80,10 +81,11 @@ class MyMissingTranslationHandler implements MissingTranslationHandler {
+@@ -81,10 +82,11 @@ class MyMissingTranslationHandler implements MissingTranslationHandler {
      providers: [
          AppConfigService,
          SkinableConfig,
@@ -852,7 +843,7 @@ index ba80bcaeb..183e3dbd8 100644
          {
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html
 new file mode 100644
-index 000000000..87d6302e4
+index 0000000000..87d6302e4d
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html
 @@ -0,0 +1,41 @@
@@ -899,10 +890,10 @@ index 000000000..87d6302e4
 +</div>
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss
 new file mode 100644
-index 000000000..e69de29bb
+index 0000000000..e69de29bb2
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
 new file mode 100644
-index 000000000..059161f81
+index 0000000000..059161f81c
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
 @@ -0,0 +1,13 @@
@@ -921,7 +912,7 @@ index 000000000..059161f81
 +// limitations under the License.
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 new file mode 100644
-index 000000000..3d15c4177
+index 0000000000..3d15c41777
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 @@ -0,0 +1,214 @@
@@ -1140,7 +1131,7 @@ index 000000000..3d15c4177
 +    }
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.component.html b/src/portal/src/app/base/left-side-nav/config/config.component.html
-index b25eb825b..007f8562b 100644
+index b25eb825b1..007f8562b3 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.component.html
 +++ b/src/portal/src/app/base/left-side-nav/config/config.component.html
 @@ -37,6 +37,16 @@
@@ -1161,7 +1152,7 @@ index b25eb825b..007f8562b 100644
      </div>
  </div>
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.module.ts b/src/portal/src/app/base/left-side-nav/config/config.module.ts
-index b8635a2df..2a9acabcc 100644
+index b8635a2df8..2a9acabcc6 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.module.ts
 +++ b/src/portal/src/app/base/left-side-nav/config/config.module.ts
 @@ -20,6 +20,8 @@ import { SystemSettingsComponent } from './system/system-settings.component';
@@ -1196,7 +1187,7 @@ index b8635a2df..2a9acabcc 100644
  })
  export class ConfigurationModule {}
 diff --git a/src/portal/src/app/services/skinable-config.service.ts b/src/portal/src/app/services/skinable-config.service.ts
-index 62c248d9d..00687b035 100644
+index 62c248d9db..00687b0359 100644
 --- a/src/portal/src/app/services/skinable-config.service.ts
 +++ b/src/portal/src/app/services/skinable-config.service.ts
 @@ -13,16 +13,20 @@
@@ -1306,7 +1297,7 @@ index 62c248d9d..00687b035 100644
      }
  }
 diff --git a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
-index 7823337e3..bc2cc9c54 100644
+index 7823337e30..bc2cc9c54c 100644
 --- a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
 +++ b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
 @@ -5,11 +5,7 @@
@@ -1323,7 +1314,7 @@ index 7823337e3..bc2cc9c54 100644
          </div>
          <div class="content" tabindex="1">
 diff --git a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
-index c920c9d7f..a4e100dd0 100644
+index c920c9d7fd..a4e100dd0b 100644
 --- a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
 +++ b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
 @@ -34,14 +34,29 @@ export class AboutDialogComponent implements OnInit {
@@ -1365,7 +1356,7 @@ index c920c9d7f..a4e100dd0 100644
  
      public get version(): string {
 diff --git a/src/portal/src/app/shared/components/global-search/global-search.component.ts b/src/portal/src/app/shared/components/global-search/global-search.component.ts
-index 049dce8d3..a6b2697f2 100644
+index 049dce8d38..a6b2697f29 100644
 --- a/src/portal/src/app/shared/components/global-search/global-search.component.ts
 +++ b/src/portal/src/app/shared/components/global-search/global-search.component.ts
 @@ -33,6 +33,7 @@ import { AppConfigService } from '../../../services/app-config.service';
@@ -1463,7 +1454,7 @@ index 049dce8d3..a6b2697f2 100644
          this.searchSub = this.searchTerms
              .pipe(debounceTime(deBounceTime))
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.html b/src/portal/src/app/shared/components/navigator/navigator.component.html
-index 5f4e3a252..b218ddbb1 100644
+index 5f4e3a2524..b218ddbb1a 100644
 --- a/src/portal/src/app/shared/components/navigator/navigator.component.html
 +++ b/src/portal/src/app/shared/components/navigator/navigator.component.html
 @@ -2,15 +2,15 @@
@@ -1487,7 +1478,7 @@ index 5f4e3a252..b218ddbb1 100644
              }}</span>
          </a>
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.ts b/src/portal/src/app/shared/components/navigator/navigator.component.ts
-index 2f665a9f6..1e079eb6d 100644
+index 2f665a9f60..1e079eb6d3 100644
 --- a/src/portal/src/app/shared/components/navigator/navigator.component.ts
 +++ b/src/portal/src/app/shared/components/navigator/navigator.component.ts
 @@ -46,6 +46,8 @@ import { map } from 'rxjs/operators';
@@ -1551,7 +1542,7 @@ index 2f665a9f6..1e079eb6d 100644
          }
          return null;
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index 9a8e11cba..2467998e2 100644
+index 1216c4bc61..8d7773dfb6 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
 @@ -770,6 +770,7 @@
@@ -1562,7 +1553,7 @@ index 9a8e11cba..2467998e2 100644
          "PROJECT_QUOTAS": "Project Quotas",
          "VULNERABILITY": "Vulnerability",
          "GC": "Garbage Collection",
-@@ -1880,6 +1881,10 @@
+@@ -1893,6 +1894,10 @@
          "DATE_PICKER_SELECT_YEAR_TEXT": "Select year, the current year is {CALENDAR_YEAR}",
          "DATE_PICKER_SELECTED_LABEL": "{FULL_DATE} - Selected"
      },
@@ -1574,7 +1565,7 @@ index 9a8e11cba..2467998e2 100644
          "BANNER_MESSAGE": "Banner Message",
          "MESSAGE_TYPE": "Message type",
 diff --git a/src/server/v2.0/handler/systeminfo.go b/src/server/v2.0/handler/systeminfo.go
-index 6c673e08c..834f60fe2 100644
+index 6c673e08c8..834f60fe2d 100644
 --- a/src/server/v2.0/handler/systeminfo.go
 +++ b/src/server/v2.0/handler/systeminfo.go
 @@ -51,6 +51,47 @@ func (s *sysInfoAPI) GetSystemInfo(ctx context.Context, _ systeminfo.GetSystemIn

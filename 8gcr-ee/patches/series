@@ -1,4 +1,4 @@
-# This series applies on Git commit 7732ddce6294e37d70773a18574e7ad24451325d
+# This series applies on Git commit 669562665b423bd20cda6d7af53d3f01d8cc4429
 0001-branding
 0002-hybrid-auth-multi
 0003-sftp-replication
