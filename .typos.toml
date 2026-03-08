@@ -72,6 +72,9 @@ extend-exclude = [
 
     # SQL migration files contain SQL aliases (fo = filter_objects, eto = event_type_objects)
     "make/migrations/",
+
+    # Patch files contain git diff metadata (hashes) and i18n translations (French, German)
+    "8gcr-ee/patches/",
 ]
 
 [type.md]
