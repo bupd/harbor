@@ -723,8 +723,8 @@ wt switch --create wip/applied          # branches from default branch
 git worktree add ../harbor.wip-applied -b wip/applied main
 cd ../harbor.wip-applied
 
-# Then initialise StGit and import
-stg init
+# Import patches — do NOT run stg init separately (import handles it).
+# A separate stg init on a branch with commits causes HEAD/stack desync.
 stg import -3 -S 8gcr-ee/patches/series
 # StGit creates commits on this branch as it applies patches — that is expected.
 # DO NOT manually commit changes to 8gcr-ee/patches/ on this branch.
@@ -795,7 +795,6 @@ git -C <parent-worktree> commit -m "fix(<scope>): <description>"
 
 | Task | Command |
 |------|---------|
-| Initialize | `stg init` |
 | Import patches | `stg import -3 -S 8gcr-ee/patches/series` |
 | List stack | `stg series` |
 | Go to patch | `stg goto <patch-name>` |

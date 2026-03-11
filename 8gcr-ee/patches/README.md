@@ -16,7 +16,6 @@ See [ADR-0001](../decision-records/0001-managing-8gcr-modifications-on-harbor.md
 
 | Task | Command |
 |------|---------|
-| Initialize | `stg init` |
 | Import patches | `stg import -3 -S 8gcr-ee/patches/series` |
 | List stack | `stg series` |
 | Go to patch | `stg goto <patch-name>` |
@@ -55,11 +54,16 @@ harbor.wip/              # wip worktree (wip/applied) — apply & develop patche
 ### Applying Patches for Development
 
 ```bash
-# In the wip worktree:
-stg init
+# In the wip worktree — just import, do NOT run stg init separately:
 stg import -3 -S 8gcr-ee/patches/series
 # Work on the wip branch - DO NOT push or commit applied results
 ```
+
+> **Do not run `stg init` before `stg import`.** `stg import` initializes the
+> stack internally. Running `stg init` separately on a branch that already has
+> commits sets the stack base to HEAD, so when `stg import` runs it sees a
+> desync between HEAD and the stack top ("HEAD and stack top are not the same").
+> This forces you into `stg repair`, which misidentifies real commits as patches.
 
 ### Flowing Changes Back to Patch Source
 
@@ -247,6 +251,33 @@ NNNN-short-description
 - `NNNN`: 4-digit sequence number (0001, 0002, etc.)
 - `short-description`: Kebab-case description of the feature
 - No `.patch` file extension (StGit export matches names directly)
+
+## Troubleshooting
+
+### "HEAD and stack top are not the same"
+
+This happens when `stg init` is run separately on a branch that already has commits,
+then `stg import` is attempted. The stack base and HEAD are out of sync.
+
+**Recovery:**
+```bash
+stg repair
+# repair turns unrecognized commits into patches — identify them:
+stg series
+# Real commits will appear as applied patches with auto-generated names.
+# Commit them back into the base (do NOT delete them):
+stg commit <misidentified-patch-name>
+# Now push the real patches:
+stg push -a
+```
+
+**Prevention:** Never run `stg init` before `stg import`. Import handles initialization.
+
+### Patches get `-1` suffix after reimport
+
+If you delete patches and reimport, StGit appends `-1` to avoid name collisions
+with internal refs from the deleted patches. This is cosmetic and doesn't affect
+patch content. To avoid it, `stg import` on a clean branch without prior patch history.
 
 ## Tips
 
