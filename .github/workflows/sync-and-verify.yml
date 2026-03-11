@@ -230,7 +230,10 @@ jobs:
 
           # Commit and push from main
           git checkout main
-          git add 8gcr-ee/patches/ 8gcr-ee/.rr-cache/
+          git add 8gcr-ee/patches/
+          if [ -d 8gcr-ee/.rr-cache ] && [ "$(ls -A 8gcr-ee/.rr-cache 2>/dev/null)" ]; then
+            git add 8gcr-ee/.rr-cache/
+          fi
           git commit -sm "fix(patches): rebase patches on updated main"
           git push --force-with-lease origin main
 
