@@ -39,7 +39,7 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index 1171689bbc..4ab8c4d6cf 100644
+index 1b04ec22aa..7eefb341f6 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
 @@ -4106,6 +4106,59 @@ paths:
@@ -102,7 +102,7 @@ index 1171689bbc..4ab8c4d6cf 100644
    /systeminfo/volumes:
      get:
        summary: Get system volume info (total/free size).
-@@ -8068,6 +8121,63 @@ definitions:
+@@ -8071,6 +8124,63 @@ definitions:
          x-nullable: true
          x-omitempty: true
          description: The OIDC provider name, empty if current auth is not OIDC_auth or OIDC provider is not configured.
@@ -1187,7 +1187,7 @@ index b8635a2df8..2a9acabcc6 100644
  })
  export class ConfigurationModule {}
 diff --git a/src/portal/src/app/services/skinable-config.service.ts b/src/portal/src/app/services/skinable-config.service.ts
-index 62c248d9db..00687b0359 100644
+index fd630eec0d..9146a93ef4 100644
 --- a/src/portal/src/app/services/skinable-config.service.ts
 +++ b/src/portal/src/app/services/skinable-config.service.ts
 @@ -13,16 +13,20 @@
@@ -1542,10 +1542,10 @@ index 2f665a9f60..1e079eb6d3 100644
          }
          return null;
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index 1216c4bc61..8d7773dfb6 100644
+index e0f766d0e1..2237c34590 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
-@@ -770,6 +770,7 @@
+@@ -773,6 +773,7 @@
          "REPOSITORY": "Repository",
          "REPO_READ_ONLY": "Repository Read Only",
          "SYSTEM": "System Settings",
@@ -1553,7 +1553,7 @@ index 1216c4bc61..8d7773dfb6 100644
          "PROJECT_QUOTAS": "Project Quotas",
          "VULNERABILITY": "Vulnerability",
          "GC": "Garbage Collection",
-@@ -1893,6 +1894,10 @@
+@@ -1896,6 +1897,10 @@
          "DATE_PICKER_SELECT_YEAR_TEXT": "Select year, the current year is {CALENDAR_YEAR}",
          "DATE_PICKER_SELECTED_LABEL": "{FULL_DATE} - Selected"
      },

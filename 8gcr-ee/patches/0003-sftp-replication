@@ -74,10 +74,10 @@ index d898220266..17b72d7fcc 100644
  		return err
  	}
 diff --git a/src/go.mod b/src/go.mod
-index 55e8ab0eca..100ec68e3c 100644
+index 505248a269..b150eb5529 100644
 --- a/src/go.mod
 +++ b/src/go.mod
-@@ -145,6 +145,7 @@ require (
+@@ -147,6 +147,7 @@ require (
  	github.com/josharian/intern v1.0.0 // indirect
  	github.com/json-iterator/go v1.1.12 // indirect
  	github.com/klauspost/compress v1.18.1 // indirect
@@ -85,7 +85,7 @@ index 55e8ab0eca..100ec68e3c 100644
  	github.com/lib/pq v1.10.9 // indirect
  	github.com/magiconair/properties v1.8.7 // indirect
  	github.com/mailru/easyjson v0.9.0 // indirect
-@@ -206,6 +207,8 @@ require (
+@@ -208,6 +209,8 @@ require (
  	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
  )
  
@@ -95,7 +95,7 @@ index 55e8ab0eca..100ec68e3c 100644
  	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
  	github.com/docker/distribution => github.com/distribution/distribution v2.8.2+incompatible
 diff --git a/src/go.sum b/src/go.sum
-index 9c28ed78d7..8e89774352 100644
+index 4ca1adff55..2f06dfa243 100644
 --- a/src/go.sum
 +++ b/src/go.sum
 @@ -386,6 +386,8 @@ github.com/klauspost/compress v1.18.1 h1:bcSGx7UbpBqMChDtsF28Lw6v/G94LPrrbMbdC3J
