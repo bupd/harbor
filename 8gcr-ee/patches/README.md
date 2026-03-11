@@ -17,7 +17,7 @@ See [ADR-0001](../decision-records/0001-managing-8gcr-modifications-on-harbor.md
 | Task | Command |
 |------|---------|
 | Initialize | `stg init` |
-| Import patches | `stg import -S 8gcr-ee/patches/series` |
+| Import patches | `stg import -3 -S 8gcr-ee/patches/series` |
 | List stack | `stg series` |
 | Go to patch | `stg goto <patch-name>` |
 | Create new patch | `stg new <name> -m "message"` |
@@ -57,7 +57,7 @@ harbor.wip/              # wip worktree (wip/applied) — apply & develop patche
 ```bash
 # In the wip worktree:
 stg init
-stg import -S 8gcr-ee/patches/series
+stg import -3 -S 8gcr-ee/patches/series
 # Work on the wip branch - DO NOT push or commit applied results
 ```
 
@@ -81,15 +81,29 @@ stg rebase main
 
 This is the core loop: develop in wip, export to patch source, commit there, rebase wip.
 
-### Fix a Failing Patch (Manual Apply)
+### Fix a Failing Patch
+
+By default `stg import` uses `git apply --index` which has zero fuzz tolerance.
+Use the `-3` (`--3way`) flag to fall back to 3-way merge when context drifts:
 
 ```bash
-# If stg import fails on a patch:
+stg import -3 -S 8gcr-ee/patches/series
+```
+
+If 3-way merge still fails (true conflict), resolve manually:
+```bash
 # 1. Resolve the conflict
 git add <resolved-files>
 stg refresh
-# 2. Continue importing remaining patches
-stg import -S 8gcr-ee/patches/series  # continues from where it left off
+# 2. Import remaining patches individually
+stg import -3 8gcr-ee/patches/<next-patch>
+```
+
+**Resuming after a failure:**
+`stg import -S series` does **not** skip already-applied patches.
+After a partial failure, import remaining patches individually:
+```bash
+stg import -3 8gcr-ee/patches/0004-identity-providers
 ```
 
 ### Making Changes to an Existing Patch

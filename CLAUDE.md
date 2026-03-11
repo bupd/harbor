@@ -725,7 +725,7 @@ cd ../harbor.wip-applied
 
 # Then initialise StGit and import
 stg init
-stg import -S 8gcr-ee/patches/series
+stg import -3 -S 8gcr-ee/patches/series
 # StGit creates commits on this branch as it applies patches — that is expected.
 # DO NOT manually commit changes to 8gcr-ee/patches/ on this branch.
 ```
@@ -766,14 +766,21 @@ git -C <parent-worktree> commit -m "fix or feat(scope): update ldap-admin-group-
 ```
 
 **Fix a failing patch (conflict during import):**
+
+Default `stg import` has zero fuzz tolerance. Always use `-3` for 3-way merge fallback:
 ```bash
-# If stg import fails on a patch:
-# 1. Resolve the conflict
+stg import -3 -S 8gcr-ee/patches/series
+```
+
+If it still fails (true conflict), resolve and import remaining patches individually:
+```bash
 git add <resolved-files>
 stg refresh
-# 2. Continue importing remaining patches
-stg import -S 8gcr-ee/patches/series  # continues from where it left off
+stg import -3 8gcr-ee/patches/<next-patch>
 ```
+
+**IMPORTANT:** `stg import -S series` does NOT skip already-applied patches.
+After a partial failure, import remaining patches individually.
 
 **Export patches after changes:**
 ```bash
@@ -789,7 +796,7 @@ git -C <parent-worktree> commit -m "fix(<scope>): <description>"
 | Task | Command |
 |------|---------|
 | Initialize | `stg init` |
-| Import patches | `stg import -S 8gcr-ee/patches/series` |
+| Import patches | `stg import -3 -S 8gcr-ee/patches/series` |
 | List stack | `stg series` |
 | Go to patch | `stg goto <patch-name>` |
 | Create new patch | `stg new <name> -m "message"` |
