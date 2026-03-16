@@ -6,29 +6,30 @@ From: bupd <bupdprasanth@gmail.com>
 ---
  api/v2.0/swagger.yaml                              |  110 ++++++++
  .../postgresql/0171_8gears_2.14_branding.up.sql    |    5 
- src/controller/systeminfo/controller.go            |  280 ++++++++++++++++++++
- src/pkg/branding/dao/dao.go                        |   66 +++++
+ src/controller/systeminfo/controller.go            |  271 ++++++++++++++++++++
+ src/pkg/branding/dao/dao.go                        |   79 ++++++
  src/pkg/branding/manager.go                        |   59 ++++
  src/pkg/branding/models/branding.go                |   56 ++++
  .../src/app/account/sign-in/sign-in.component.html |    2 
- .../src/app/account/sign-in/sign-in.component.ts   |   28 +-
- src/portal/src/app/app.component.ts                |   30 +-
+ .../src/app/account/sign-in/sign-in.component.ts   |   22 +-
+ src/portal/src/app/app.component.ts                |   27 +-
  src/portal/src/app/app.module.ts                   |    4 
- .../config/branding/branding.component.html        |   41 +++
+ .../config/branding/branding.component.html        |   75 ++++++
  .../config/branding/branding.component.scss        |    0 
  .../config/branding/branding.component.spec.ts     |   13 +
- .../config/branding/branding.component.ts          |  214 +++++++++++++++
+ .../config/branding/branding.component.ts          |  180 +++++++++++++
  .../left-side-nav/config/config.component.html     |   10 +
  .../app/base/left-side-nav/config/config.module.ts |    9 +
- .../src/app/services/skinable-config.service.ts    |   80 +++++-
+ .../src/app/services/skinable-config.service.ts    |   46 +++
  .../about-dialog/about-dialog.component.html       |    6 
- .../about-dialog/about-dialog.component.ts         |   31 ++
- .../global-search/global-search.component.ts       |   79 ++++--
+ .../about-dialog/about-dialog.component.ts         |   17 +
+ .../global-search/global-search.component.ts       |   41 +--
  .../components/navigator/navigator.component.html  |    8 -
- .../components/navigator/navigator.component.ts    |   27 ++
- src/portal/src/i18n/lang/en-us-lang.json           |    5 
- src/server/v2.0/handler/systeminfo.go              |   41 +++
- 24 files changed, 1120 insertions(+), 84 deletions(-)
+ .../components/navigator/navigator.component.ts    |   20 +
+ src/portal/src/i18n/lang/en-us-lang.json           |   14 +
+ src/portal/src/images/container-registry-logo.svg  |    7 -
+ src/server/v2.0/handler/systeminfo.go              |   18 +
+ 25 files changed, 1007 insertions(+), 92 deletions(-)
  create mode 100644 make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
  create mode 100644 src/pkg/branding/dao/dao.go
  create mode 100644 src/pkg/branding/manager.go
@@ -37,9 +38,10 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
+ delete mode 100644 src/portal/src/images/container-registry-logo.svg
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index 1b04ec22aa..7eefb341f6 100644
+index 1b04ec22a..7eefb341f 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
 @@ -4106,6 +4106,59 @@ paths:
@@ -168,7 +170,7 @@ index 1b04ec22aa..7eefb341f6 100644
      properties:
 diff --git a/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql b/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
 new file mode 100644
-index 0000000000..f8e2466352
+index 000000000..f8e246635
 --- /dev/null
 +++ b/make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
 @@ -0,0 +1,5 @@
@@ -178,7 +180,7 @@ index 0000000000..f8e2466352
 +    update_time  TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 +);
 diff --git a/src/controller/systeminfo/controller.go b/src/controller/systeminfo/controller.go
-index e3d40b303b..faa54fde97 100644
+index e3d40b303..7132fb414 100644
 --- a/src/controller/systeminfo/controller.go
 +++ b/src/controller/systeminfo/controller.go
 @@ -16,10 +16,13 @@ package systeminfo
@@ -195,11 +197,12 @@ index e3d40b303b..faa54fde97 100644
  	"time"
  
  	"github.com/goharbor/harbor/src/common"
-@@ -28,9 +31,11 @@ import (
+@@ -28,9 +31,12 @@ import (
  	"github.com/goharbor/harbor/src/lib/config/models"
  	"github.com/goharbor/harbor/src/lib/errors"
  	"github.com/goharbor/harbor/src/lib/log"
 +	"github.com/goharbor/harbor/src/pkg/branding"
++	"github.com/goharbor/harbor/src/pkg/branding/dao"
  	"github.com/goharbor/harbor/src/pkg/systeminfo"
  	"github.com/goharbor/harbor/src/pkg/systeminfo/imagestorage"
  	"github.com/goharbor/harbor/src/pkg/version"
@@ -207,7 +210,7 @@ index e3d40b303b..faa54fde97 100644
  )
  
  const defaultRootCert = "/etc/core/ca/ca.crt"
-@@ -53,7 +58,8 @@ type Data struct {
+@@ -53,7 +59,8 @@ type Data struct {
  }
  
  type protectedData struct {
@@ -217,7 +220,7 @@ index e3d40b303b..faa54fde97 100644
  	RegistryURL                 string
  	HarborVersion               string
  	ExtURL                      string
-@@ -70,6 +76,27 @@ type Options struct {
+@@ -70,6 +77,27 @@ type Options struct {
  	WithProtectedInfo bool
  }
  
@@ -245,7 +248,7 @@ index e3d40b303b..faa54fde97 100644
  // Controller defines the methods needed for systeminfo API
  type Controller interface {
  
-@@ -81,9 +108,194 @@ type Controller interface {
+@@ -81,9 +109,184 @@ type Controller interface {
  
  	// GetCA returns a ReadCloser of Harbor's CA if it's configured and accessible from Harbor core
  	GetCA(ctx context.Context) (io.ReadCloser, error)
@@ -266,15 +269,6 @@ index e3d40b303b..faa54fde97 100644
 +	}
 +}
 +
-+var (
-+	DarkMode     = ""
-+	LightMode    = ""
-+	LoginBgImg   = "https://4kwallpapers.com/images/walls/thumbs_3t/1819.jpg"
-+	LoginTitle   = "Container Registry"
-+	Name         = "Container Registry"
-+	Logo         = "https://logowik.com/content/uploads/images/online-domain9906.jpg"
-+	Introduction = "8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."
-+)
 +
 +func AssignFromJSON(jsonData string) (*BrandingConfig, error) {
 +	if len(jsonData) == 0 {
@@ -348,6 +342,11 @@ index e3d40b303b..faa54fde97 100644
 +	}
 +
 +	return result, nil
++}
++
++func defaultSwaggerBrandingConfig() *mdl.BrandingConfig {
++	cfg, _ := ConvertBrandingConfigToSwagger(dao.DefaultBrandingJSON)
++	return cfg
  }
  
 -type controller struct{}
@@ -358,34 +357,28 @@ index e3d40b303b..faa54fde97 100644
 +	cfg := c.brandingCache.config
 +	c.brandingCache.RUnlock()
 +	if cfg != nil {
-+		logger.Debugf("Cache hit for branding config")
 +		return cfg, nil
 +	}
 +
-+	logger.Info("Cache miss. Fetching branding config from DB.")
-+
 +	branding, err := c.brandMgr.Get(ctx)
 +	if err != nil {
-+		logger.Errorf("Error occurred getting config: %v", err)
-+		return nil, err
++		logger.Warningf("failed to get branding config, returning defaults: %v", err)
++		return defaultSwaggerBrandingConfig(), nil
 +	}
 +	swagbranding, err := ConvertBrandingConfigToSwagger(branding.Config)
 +	if err != nil {
-+		logger.Errorf("Error occurred converting config: %v", err)
-+		return nil, err
++		logger.Warningf("failed to convert branding config, returning defaults: %v", err)
++		return defaultSwaggerBrandingConfig(), nil
 +	}
 +
 +	c.brandingCache.Lock()
 +	defer c.brandingCache.Unlock()
 +
 +	if c.brandingCache.config != nil {
-+		logger.Debug("Cache populated by another goroutine during fetch. should not be here")
 +		return c.brandingCache.config, nil
 +	}
 +
 +	c.brandingCache.config = swagbranding
-+	logger.Infof("Successfully cached branding config")
-+
 +	return swagbranding, nil
 +}
 +
@@ -441,7 +434,7 @@ index e3d40b303b..faa54fde97 100644
  
  func (c *controller) GetInfo(ctx context.Context, opt Options) (*Data, error) {
  	logger := log.GetLogger(ctx)
-@@ -171,5 +383,67 @@ func (c *controller) GetCA(ctx context.Context) (io.ReadCloser, error) {
+@@ -171,5 +374,67 @@ func (c *controller) GetCA(ctx context.Context) (io.ReadCloser, error) {
  
  // NewController return an instance of controller
  func NewController() Controller {
@@ -512,10 +505,10 @@ index e3d40b303b..faa54fde97 100644
  }
 diff --git a/src/pkg/branding/dao/dao.go b/src/pkg/branding/dao/dao.go
 new file mode 100644
-index 0000000000..7dbc540b04
+index 000000000..ebb44de08
 --- /dev/null
 +++ b/src/pkg/branding/dao/dao.go
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,79 @@
 +package dao
 +
 +import (
@@ -525,19 +518,21 @@ index 0000000000..7dbc540b04
 +	"github.com/goharbor/harbor/src/lib/log"
 +	"github.com/goharbor/harbor/src/lib/orm"
 +	model "github.com/goharbor/harbor/src/pkg/branding/models"
-+	// "github.com/goharbor/harbor/src/server/v2.0/models"
 +)
 +
-+// DAO defines the interface to access the robot data model
++// DefaultBrandingJSON is the default branding configuration seeded on first access.
++const DefaultBrandingJSON = `{"headerBgColor":{"darkMode":"","lightMode":""},"loginBgImg":"","loginTitle":"Container Registry","product":{"name":"Container Registry","logo":"https://container-registry.com/img/logo.svg","introduction":"8gears Container Registry is a Harbor-based container registry as a service offered and operated by the project's maintainer and contributors. Harbor is a CNCF-graded open-source container registry for securely managing container images and other OCI artifacts with policies, role-based access control, vulnerability scanning, and signing."}}`
++
++// DAO defines the interface to access the branding data model
 +type DAO interface {
-+	// Get ...
++	// Get returns the branding config, seeding defaults on first access
 +	Get(ctx context.Context) (*model.Branding, error)
 +
-+	// Update ...
++	// Update upserts the branding config
 +	Update(ctx context.Context, branding string) error
 +}
 +
-+// New creates a default implementation for Dao
++// New creates a default implementation for DAO
 +func New() DAO {
 +	return &dao{}
 +}
@@ -549,12 +544,24 @@ index 0000000000..7dbc540b04
 +	if err != nil {
 +		return nil, err
 +	}
-+	b := model.Branding{ID: 1} // we always fetch the only row
++	b := model.Branding{ID: 1}
 +	err = ormer.Read(&b)
++	if err == orm.ErrNoRows {
++		b = model.Branding{
++			ID:         1,
++			Config:     DefaultBrandingJSON,
++			UpdateTime: time.Now(),
++		}
++		_, err = ormer.Insert(&b)
++		if err != nil {
++			return nil, err
++		}
++		log.Infof("seeded default branding config")
++		return &b, nil
++	}
 +	if err != nil {
 +		return nil, err
 +	}
-+	log.Debugf("fetched branding from DB")
 +	return &b, nil
 +}
 +
@@ -565,13 +572,12 @@ index 0000000000..7dbc540b04
 +	}
 +
 +	branding := &model.Branding{
-+		ID:         int64(1),
++		ID:         1,
 +		Config:     params,
 +		UpdateTime: time.Now(),
 +	}
 +
-+	// check if row exists
-+	existing := &model.Branding{ID: int64(1)}
++	existing := &model.Branding{ID: 1}
 +	err = ormer.Read(existing)
 +
 +	if err == orm.ErrNoRows {
@@ -584,7 +590,7 @@ index 0000000000..7dbc540b04
 +}
 diff --git a/src/pkg/branding/manager.go b/src/pkg/branding/manager.go
 new file mode 100644
-index 0000000000..27e048290d
+index 000000000..27e048290
 --- /dev/null
 +++ b/src/pkg/branding/manager.go
 @@ -0,0 +1,59 @@
@@ -649,7 +655,7 @@ index 0000000000..27e048290d
 +}
 diff --git a/src/pkg/branding/models/branding.go b/src/pkg/branding/models/branding.go
 new file mode 100644
-index 0000000000..f21481801b
+index 000000000..f21481801
 --- /dev/null
 +++ b/src/pkg/branding/models/branding.go
 @@ -0,0 +1,56 @@
@@ -710,7 +716,7 @@ index 0000000000..f21481801b
 +	return string(b.Config), nil
 +}
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.html b/src/portal/src/app/account/sign-in/sign-in.component.html
-index 5108d43164..8f5acbb70d 100644
+index 5108d4316..8f5acbb70 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.html
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.html
 @@ -6,7 +6,7 @@
@@ -723,7 +729,7 @@ index 5108d43164..8f5acbb70d 100644
          }">
          <form #signInForm="ngForm" class="login">
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.ts b/src/portal/src/app/account/sign-in/sign-in.component.ts
-index e46b99bc69..707ee5f421 100644
+index ce76aa155..b13a8a7a0 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.ts
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.ts
 @@ -38,6 +38,7 @@ import {
@@ -734,7 +740,7 @@ index e46b99bc69..707ee5f421 100644
  
  // Define status flags for signing in states
  export const signInStatusNormal = 0;
-@@ -89,16 +90,23 @@ export class SignInComponent implements AfterViewChecked, OnInit {
+@@ -89,16 +90,17 @@ export class SignInComponent implements AfterViewChecked, OnInit {
      ) {}
  
      ngOnInit(): void {
@@ -750,8 +756,6 @@ index e46b99bc69..707ee5f421 100644
 -        }
 +        this.skinableConfig.getBrandingInfo(false).subscribe({
 +            next: branding => {
-+                console.log('branding data 1 changing login bgimg', branding);
-+                // use branding.product.name instead of skinableConfig
 +                if (branding?.loginBgImg) {
 +                    this.customLoginBgImg = branding.loginBgImg;
 +                }
@@ -759,17 +763,13 @@ index e46b99bc69..707ee5f421 100644
 +                    this.customAppTitle = branding.loginTitle;
 +                }
 +            },
-+            error: () => {
-+                // fallback on error
-+                console.error('branding info load failed');
-+            },
 +        });
 +
          this.route.queryParams.subscribe(params => {
              this.redirectUrl = params['redirect_url'] || '';
              let isSignUp = params['sign_up'] || '';
 diff --git a/src/portal/src/app/app.component.ts b/src/portal/src/app/app.component.ts
-index 07c3ce5437..5f457b353a 100644
+index 07c3ce543..105b2bf08 100644
 --- a/src/portal/src/app/app.component.ts
 +++ b/src/portal/src/app/app.component.ts
 @@ -36,6 +36,7 @@ import {
@@ -780,7 +780,7 @@ index 07c3ce5437..5f457b353a 100644
  
  @Component({
      selector: 'harbor-app',
-@@ -59,18 +60,23 @@ export class AppComponent implements OnInit, OnDestroy {
+@@ -59,18 +60,20 @@ export class AppComponent implements OnInit, OnDestroy {
          // Override page title
          let key: string = 'APP_TITLE.HARBOR';
          translate.get(key).subscribe((res: string) => {
@@ -799,17 +799,14 @@ index 07c3ce5437..5f457b353a 100644
 +            // Fetch branding from API
 +            this.skinableConfig.getBrandingInfo(true).subscribe({
 +                next: branding => {
-+                    console.log('branding data 2 main app component', branding);
-+                    // use branding.product.name instead of skinableConfig
 +                    if (branding?.product?.name) {
 +                        this.titleService.setTitle(branding.product.name);
-+                        this.skinableConfig.setTitleIcon(branding.product.logo); // unchanged
++                        this.skinableConfig.setTitleIcon(branding.product.logo);
 +                    } else {
-+                        this.titleService.setTitle(res); // fallback
++                        this.titleService.setTitle(res);
 +                    }
 +                },
 +                error: () => {
-+                    // fallback on error
 +                    this.titleService.setTitle(res);
 +                },
 +            });
@@ -817,7 +814,7 @@ index 07c3ce5437..5f457b353a 100644
          this.setTheme();
      }
 diff --git a/src/portal/src/app/app.module.ts b/src/portal/src/app/app.module.ts
-index 7434adc283..497283b94e 100644
+index 7434adc28..497283b94 100644
 --- a/src/portal/src/app/app.module.ts
 +++ b/src/portal/src/app/app.module.ts
 @@ -41,6 +41,7 @@ import { ErrorHandler } from './shared/units/error-handler';
@@ -843,31 +840,65 @@ index 7434adc283..497283b94e 100644
          {
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html
 new file mode 100644
-index 0000000000..87d6302e4d
+index 000000000..1acbc8ed5
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.html
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,75 @@
 +<form #brandingForm="ngForm" class="clr-form clr-form-horizontal">
 +    <section>
-+        <div class="clr-form-control">
-+            <label class="clr-control-label">{{
-+                'BRANDING.TITLE' | translate
-+            }}</label>
-+            <div class="clr-textarea-wrapper">
-+                <textarea
-+                    id="branding"
-+                    placeholder="{{ 'BRANDING.MESSAGE' | translate }}"
-+                    autocomplete="off"
-+                    class="clr-textarea"
-+                    [(ngModel)]="brandingConfig"
-+                    [ngModelOptions]="{ standalone: true }"
-+                    rows="20"
-+                    cols="80"
-+                    [disabled]="
-+                        !currentConfig.banner_message.editable
-+                    "></textarea>
-+            </div>
-+        </div>
++        <h4>{{ 'BRANDING.PRODUCT' | translate }}</h4>
++        <clr-input-container>
++            <label>{{ 'BRANDING.PRODUCT_NAME' | translate }}</label>
++            <input clrInput [(ngModel)]="productName" name="productName" />
++        </clr-input-container>
++        <clr-input-container>
++            <label>{{ 'BRANDING.PRODUCT_LOGO' | translate }}</label>
++            <input
++                clrInput
++                [(ngModel)]="productLogo"
++                name="productLogo"
++                placeholder="https://example.com/logo.png" />
++        </clr-input-container>
++        <clr-textarea-container>
++            <label>{{ 'BRANDING.PRODUCT_INTRODUCTION' | translate }}</label>
++            <textarea
++                clrTextarea
++                [(ngModel)]="productIntroduction"
++                name="productIntroduction"
++                rows="3"></textarea>
++        </clr-textarea-container>
++
++        <h4>{{ 'BRANDING.LOGIN' | translate }}</h4>
++        <clr-input-container>
++            <label>{{ 'BRANDING.LOGIN_TITLE' | translate }}</label>
++            <input clrInput [(ngModel)]="loginTitle" name="loginTitle" />
++        </clr-input-container>
++        <clr-input-container>
++            <label>{{ 'BRANDING.LOGIN_BG_IMG' | translate }}</label>
++            <input
++                clrInput
++                [(ngModel)]="loginBgImg"
++                name="loginBgImg"
++                placeholder="https://example.com/bg.png" />
++        </clr-input-container>
++
++        <h4>{{ 'BRANDING.HEADER_COLORS' | translate }}</h4>
++        <clr-input-container>
++            <label>{{ 'BRANDING.HEADER_BG_COLOR_LIGHT' | translate }}</label>
++            <input
++                clrInput
++                [(ngModel)]="headerBgColorLight"
++                name="headerBgColorLight"
++                placeholder="#ffffff" />
++        </clr-input-container>
++        <clr-input-container>
++            <label>{{ 'BRANDING.HEADER_BG_COLOR_DARK' | translate }}</label>
++            <input
++                clrInput
++                [(ngModel)]="headerBgColorDark"
++                name="headerBgColorDark"
++                placeholder="#0d1117" />
++        </clr-input-container>
 +    </section>
 +</form>
 +<div>
@@ -890,10 +921,10 @@ index 0000000000..87d6302e4d
 +</div>
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss
 new file mode 100644
-index 0000000000..e69de29bb2
+index 000000000..e69de29bb
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
 new file mode 100644
-index 0000000000..059161f81c
+index 000000000..059161f81
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
 @@ -0,0 +1,13 @@
@@ -912,10 +943,10 @@ index 0000000000..059161f81c
 +// limitations under the License.
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 new file mode 100644
-index 0000000000..3d15c41777
+index 000000000..de7b13ad0
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,180 @@
 +// Copyright Project Harbor Authors
 +//
 +// Licensed under the Apache License, Version 2.0 (the "License");
@@ -937,29 +968,12 @@ index 0000000000..3d15c41777
 +    ViewChild,
 +} from '@angular/core';
 +import { NgForm } from '@angular/forms';
-+import {
-+    BannerMessage,
-+    BannerMessageI18nMap,
-+    BannerMessageType,
-+    Configuration,
-+} from '../config';
-+import {
-+    clone,
-+    CURRENT_BASE_HREF,
-+    getChanges,
-+    isEmpty,
-+} from '../../../../shared/units/utils';
++import { Configuration } from '../config';
 +import { ConfigService } from '../config.service';
 +import { AppConfigService } from '../../../../services/app-config.service';
-+import { finalize } from 'rxjs/operators';
 +import { MessageHandlerService } from '../../../../shared/services/message-handler.service';
-+import {
-+    EventService,
-+    HarborEvent,
-+} from '../../../../services/event-service/event.service';
-+import { Subscription } from 'rxjs';
-+import { AuditlogService, SysteminfoService } from 'ng-swagger-gen/services';
-+import { AuditLogEventType, BrandingConfig } from 'ng-swagger-gen/models';
++import { SysteminfoService } from 'ng-swagger-gen/services';
++import { BrandingConfig } from 'ng-swagger-gen/models';
 +import { SkinableConfig } from 'src/app/services/skinable-config.service';
 +
 +@Component({
@@ -969,7 +983,6 @@ index 0000000000..3d15c41777
 +})
 +export class BrandingComponent implements OnInit, AfterViewChecked {
 +    onGoing = false;
-+    loading = false;
 +
 +    get currentConfig(): Configuration {
 +        return this.conf.getConfig();
@@ -979,13 +992,22 @@ index 0000000000..3d15c41777
 +        this.conf.setConfig(cfg);
 +    }
 +
-+    brandingConfig: string;
-+    // the copy of bannerMessage
-+    brandingConfigCopy: string;
-+    // bannerRefreshSub: Subscription;
-+    currentDate: Date = new Date();
-+    logEventTypes: Record<string, string>[] = [];
-+    selectedLogEventTypes: string[] = clone([]);
++    productName: string = '';
++    productLogo: string = '';
++    productIntroduction: string = '';
++    loginTitle: string = '';
++    loginBgImg: string = '';
++    headerBgColorLight: string = '';
++    headerBgColorDark: string = '';
++
++    productNameCopy: string = '';
++    productLogoCopy: string = '';
++    productIntroductionCopy: string = '';
++    loginTitleCopy: string = '';
++    loginBgImgCopy: string = '';
++    headerBgColorLightCopy: string = '';
++    headerBgColorDarkCopy: string = '';
++
 +    @ViewChild('brandingForm') brandingForm: NgForm;
 +
 +    constructor(
@@ -995,9 +1017,7 @@ index 0000000000..3d15c41777
 +        private changeDetectorRef: ChangeDetectorRef,
 +        private systeminfoService: SysteminfoService,
 +        private skinableConfig: SkinableConfig
-+    ) {
-+        return;
-+    }
++    ) {}
 +
 +    ngOnInit() {
 +        this.getAndSetBrandingConfig();
@@ -1008,18 +1028,31 @@ index 0000000000..3d15c41777
 +    }
 +
 +    getAndSetBrandingConfig() {
-+        this.skinableConfig.getBrandingInfo(false).subscribe({
++        this.skinableConfig.getBrandingInfo(true).subscribe({
 +            next: branding => {
-+                console.log('branding data in admin fetch', branding);
-+                // use branding.product.name instead of skinableConfig
 +                if (branding) {
-+                    this.brandingConfig = JSON.stringify(branding, null, 2);
-+                    this.brandingConfigCopy = JSON.stringify(branding, null, 2);
++                    this.productName = branding?.product?.name || '';
++                    this.productLogo = branding?.product?.logo || '';
++                    this.productIntroduction =
++                        branding?.product?.introduction || '';
++                    this.loginTitle = branding?.loginTitle || '';
++                    this.loginBgImg = branding?.loginBgImg || '';
++                    this.headerBgColorLight =
++                        branding?.headerBgColor?.lightMode || '';
++                    this.headerBgColorDark =
++                        branding?.headerBgColor?.darkMode || '';
++
++                    this.productNameCopy = this.productName;
++                    this.productLogoCopy = this.productLogo;
++                    this.productIntroductionCopy = this.productIntroduction;
++                    this.loginTitleCopy = this.loginTitle;
++                    this.loginBgImgCopy = this.loginBgImg;
++                    this.headerBgColorLightCopy = this.headerBgColorLight;
++                    this.headerBgColorDarkCopy = this.headerBgColorDark;
 +                }
 +            },
 +            error: () => {
-+                // fallback on error
-+                console.error('branding config load failed in admin fetch');
++                this.errorHandler.error('Failed to load branding config');
 +            },
 +        });
 +    }
@@ -1032,106 +1065,70 @@ index 0000000000..3d15c41777
 +        return this.hasBrandingChanged();
 +    }
 +
-+    private sortKeysDeep(obj: any): any {
-+        if (Array.isArray(obj)) {
-+            return obj.map(v => this.sortKeysDeep(v)); // ← sort values in array
-+        } else if (obj !== null && typeof obj === 'object') {
-+            return Object.keys(obj)
-+                .sort() // ← sort keys at every level
-+                .reduce((acc: any, key: string) => {
-+                    acc[key] = this.sortKeysDeep(obj[key]); // ← recurse
-+                    return acc;
-+                }, {});
-+        }
-+        return obj; // primitive
-+    }
-+
-+    // Utility function to deeply compare JSON objects
 +    hasBrandingChanged(): boolean {
-+        // parse both JSON values                           ← same as before
-+        const oldConfig = JSON.parse(this.brandingConfigCopy || '{}');
-+        const newConfig = JSON.parse(this.brandingConfig || '{}');
-+
-+        // deeply sort both configs
-+        const oldSorted = this.sortKeysDeep(oldConfig);
-+        const newSorted = this.sortKeysDeep(newConfig);
-+
-+        // compare normalized output
-+        const oldStr = JSON.stringify(oldSorted);
-+        const newStr = JSON.stringify(newSorted);
-+
-+        return oldStr !== newStr; // true if ANY nested change
++        return (
++            this.productName !== this.productNameCopy ||
++            this.productLogo !== this.productLogoCopy ||
++            this.productIntroduction !== this.productIntroductionCopy ||
++            this.loginTitle !== this.loginTitleCopy ||
++            this.loginBgImg !== this.loginBgImgCopy ||
++            this.headerBgColorLight !== this.headerBgColorLightCopy ||
++            this.headerBgColorDark !== this.headerBgColorDarkCopy
++        );
 +    }
 +
-+    disabled(prop: any): boolean {
-+        return !(prop && prop.editable);
-+    }
-+
-+    /**
-+     *
-+     * Save the changed values
-+     *
-+     * @memberOf ConfigurationComponent
-+     */
 +    public save(): void {
-+        if (this.hasChanges()) {
-+            var brandingconfig: BrandingConfig;
-+            try {
-+                // Parse JSON string safely and type it  ← changed
-+                brandingconfig = JSON.parse(
-+                    this.brandingConfig as string
-+                ) as BrandingConfig;
-+            } catch (e) {
-+                console.error('Failed to parse brandingConfig', e); // ← added error handling
-+            }
-+
-+            this.onGoing = true;
-+            this.systeminfoService
-+                .updateBrandingInfo(brandingconfig)
-+                .subscribe({
-+                    next: result => {
-+                        this.getAndSetBrandingConfig();
-+                        // Reload bootstrap option
-+                        this.appConfigService.load().subscribe(
-+                            () => {},
-+                            error =>
-+                                console.error(
-+                                    'Failed to reload bootstrap option with error: ',
-+                                    error
-+                                )
-+                        );
-+                        this.errorHandler.info('CONFIG.SAVE_SUCCESS');
-+                        // window.location.reload();
-+                    },
-+                    error: error => {
-+                        this.errorHandler.error(error);
-+                    },
-+                });
++        if (!this.hasChanges()) {
++            return;
 +        }
++
++        const config: BrandingConfig = {
++            headerBgColor: {
++                darkMode: this.headerBgColorDark,
++                lightMode: this.headerBgColorLight,
++            },
++            loginBgImg: this.loginBgImg,
++            loginTitle: this.loginTitle,
++            product: {
++                name: this.productName,
++                logo: this.productLogo,
++                introduction: this.productIntroduction,
++            },
++        };
++
++        this.onGoing = true;
++        this.systeminfoService.updateBrandingInfo(config).subscribe({
++            next: () => {
++                this.onGoing = false;
++                this.getAndSetBrandingConfig();
++                this.appConfigService.load().subscribe();
++                this.errorHandler.info('CONFIG.SAVE_SUCCESS');
++            },
++            error: error => {
++                this.onGoing = false;
++                this.errorHandler.error(error);
++            },
++        });
 +    }
 +
 +    public get inProgress(): boolean {
 +        return this.onGoing || this.conf.getLoadingConfigStatus();
 +    }
 +
-+    /**
-+     *
-+     * Discard current changes if have and reset
-+     *
-+     * @memberOf ConfigurationComponent
-+     */
 +    public cancel(): void {
-+        // let changes = this.getChanges();
 +        if (this.hasChanges()) {
-+            this.conf.confirmUnsavedChanges('branding config');
-+        } else {
-+            // Invalid situation, should not come here
-+            console.error('Nothing changed');
++            this.productName = this.productNameCopy;
++            this.productLogo = this.productLogoCopy;
++            this.productIntroduction = this.productIntroductionCopy;
++            this.loginTitle = this.loginTitleCopy;
++            this.loginBgImg = this.loginBgImgCopy;
++            this.headerBgColorLight = this.headerBgColorLightCopy;
++            this.headerBgColorDark = this.headerBgColorDarkCopy;
 +        }
 +    }
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.component.html b/src/portal/src/app/base/left-side-nav/config/config.component.html
-index b25eb825b1..007f8562b3 100644
+index b25eb825b..007f8562b 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.component.html
 +++ b/src/portal/src/app/base/left-side-nav/config/config.component.html
 @@ -37,6 +37,16 @@
@@ -1152,7 +1149,7 @@ index b25eb825b1..007f8562b3 100644
      </div>
  </div>
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.module.ts b/src/portal/src/app/base/left-side-nav/config/config.module.ts
-index b8635a2df8..2a9acabcc6 100644
+index b8635a2df..2a9acabcc 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.module.ts
 +++ b/src/portal/src/app/base/left-side-nav/config/config.module.ts
 @@ -20,6 +20,8 @@ import { SystemSettingsComponent } from './system/system-settings.component';
@@ -1187,7 +1184,7 @@ index b8635a2df8..2a9acabcc6 100644
  })
  export class ConfigurationModule {}
 diff --git a/src/portal/src/app/services/skinable-config.service.ts b/src/portal/src/app/services/skinable-config.service.ts
-index fd630eec0d..9146a93ef4 100644
+index fd630eec0..3f97f4f24 100644
 --- a/src/portal/src/app/services/skinable-config.service.ts
 +++ b/src/portal/src/app/services/skinable-config.service.ts
 @@ -13,16 +13,20 @@
@@ -1195,9 +1192,8 @@ index fd630eec0d..9146a93ef4 100644
  import { Inject, Injectable } from '@angular/core';
  import { HttpClient } from '@angular/common/http';
 -import { map, catchError } from 'rxjs/operators';
--import { Observable, throwError as observableThrowError } from 'rxjs';
 +import { map, catchError, shareReplay, tap } from 'rxjs/operators';
-+import { Observable, throwError as observableThrowError, of } from 'rxjs';
+ import { Observable, throwError as observableThrowError } from 'rxjs';
  import { CustomStyle } from './theme';
  import { DOCUMENT } from '@angular/common';
  import { environment } from 'src/environments/environment';
@@ -1213,55 +1209,26 @@ index fd630eec0d..9146a93ef4 100644
          @Inject(DOCUMENT) private document: Document
      ) {}
  
-@@ -40,19 +44,73 @@ export class SkinableConfig {
+@@ -40,19 +44,41 @@ export class SkinableConfig {
              );
      }
  
 +    private brandingCache$: Observable<any> | null = null;
 +    public getBrandingInfo(refetch: boolean): Observable<any> {
-+        if (!refetch) {
-+            if (this.brandingCache$) {
-+                return this.brandingCache$;
-+            }
-+            const brandingCache = localStorage.getItem('branding');
-+            if (brandingCache.length > 0) {
-+                try {
-+                    const parsedData = JSON.parse(brandingCache);
-+
-+                    // Important: Sync internal variable so getBrandingConfig() works immediately
-+                    this.BrandingInfo = parsedData;
-+
-+                    // Create a stream from the LS data and assign it to brandingCache$
-+                    // This ensures future calls in this session hit "Step 1" instead of parsing LS again.
-+                    this.brandingCache$ = of(parsedData);
-+
-+                    return this.brandingCache$;
-+                } catch (e) {
-+                    console.warn(
-+                        'Localstorage branding data corrupted, clearing it.',
-+                        e
-+                    );
-+                    localStorage.removeItem('branding');
-+                }
-+            }
++        if (!refetch && this.brandingCache$) {
++            return this.brandingCache$;
 +        }
-+        // If not cached → fetch once and store  ← changed
++
 +        this.brandingCache$ = this.systeminfoService.getBrandingInfo().pipe(
 +            tap(branding => {
-+                console.log('Branding fetched from API');
 +                this.BrandingInfo = branding;
-+                localStorage.setItem('branding', JSON.stringify(branding));
 +            }),
-+            // Share the result with all subscribers and cache the last emitted value (1)
 +            shareReplay(1),
 +            catchError(err => {
-+                console.error('Branding info load failed', err);
-+                // If it fails, clear the cache$ so we can try again next time
 +                this.brandingCache$ = null;
 +                return observableThrowError(err);
 +            })
 +        );
-+        // Return shared cached observable  ← changed
 +        return this.brandingCache$;
 +    }
 +
@@ -1283,21 +1250,18 @@ index fd630eec0d..9146a93ef4 100644
 +    }
 +
 +    public setTitleIcon(logoUrl: string) {
-+        console.log('logoUrl', logoUrl);
 +        if (!logoUrl) {
-+            return; // no logo → do nothing
++            return;
 +        }
 +
-+        // find the favicon link element
 +        const titleIcon: HTMLLinkElement = this.document.querySelector('link');
-+
 +        if (titleIcon) {
 +            titleIcon.href = logoUrl;
          }
      }
  }
 diff --git a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
-index 7823337e30..bc2cc9c54c 100644
+index 7823337e3..bc2cc9c54 100644
 --- a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
 +++ b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
 @@ -5,11 +5,7 @@
@@ -1314,10 +1278,10 @@ index 7823337e30..bc2cc9c54c 100644
          </div>
          <div class="content" tabindex="1">
 diff --git a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
-index c920c9d7fd..a4e100dd0b 100644
+index c920c9d7f..9512bc4f0 100644
 --- a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
 +++ b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.ts
-@@ -34,14 +34,29 @@ export class AboutDialogComponent implements OnInit {
+@@ -34,14 +34,15 @@ export class AboutDialogComponent implements OnInit {
  
      ngOnInit(): void {
          // custom skin
@@ -1331,32 +1295,18 @@ index c920c9d7fd..a4e100dd0b 100644
 -        }
 +        this.skinableConfig.getBrandingInfo(false).subscribe({
 +            next: branding => {
-+                console.log('branding data 5 about component', branding);
-+                const customSkinObj = branding;
-+                if (customSkinObj) {
-+                    if (customSkinObj.product?.logo) {
-+                        console.log(
-+                            'customSkinObj logo',
-+                            customSkinObj.product.logo
-+                        );
-+                        this.customLogo = customSkinObj.product.logo;
-+                        this.customName = customSkinObj.product.name;
-+                        this.customIntroduction =
-+                            customSkinObj.product.introduction;
-+                    }
++                if (branding?.product) {
++                    this.customLogo = branding.product.logo;
++                    this.customName = branding.product.name;
++                    this.customIntroduction = branding.product.introduction;
 +                }
-+            },
-+            error: () => {
-+                console.error(
-+                    'branding info load failed in the about component'
-+                );
 +            },
 +        });
      }
  
      public get version(): string {
 diff --git a/src/portal/src/app/shared/components/global-search/global-search.component.ts b/src/portal/src/app/shared/components/global-search/global-search.component.ts
-index 049dce8d38..a6b2697f29 100644
+index 049dce8d3..94a07ae9b 100644
 --- a/src/portal/src/app/shared/components/global-search/global-search.component.ts
 +++ b/src/portal/src/app/shared/components/global-search/global-search.component.ts
 @@ -33,6 +33,7 @@ import { AppConfigService } from '../../../services/app-config.service';
@@ -1367,45 +1317,11 @@ index 049dce8d38..a6b2697f29 100644
  
  const deBounceTime = 500; // ms
  const SEARCH_KEY: string = 'globalSearch';
-@@ -65,29 +66,63 @@ export class GlobalSearchComponent implements OnInit, OnDestroy {
+@@ -65,29 +66,23 @@ export class GlobalSearchComponent implements OnInit, OnDestroy {
      ) {}
  
      ngOnInit(): void {
-+        this.skinableConfig.getBrandingInfo(false).subscribe({
-+            next: branding => {
-+                console.log('branding data 3', branding);
-+                // use branding.product.name instead of skinableConfig
-+                if (branding?.product?.name) {
-+                    this.translate
-+                        .get('GLOBAL_SEARCH.PLACEHOLDER', {
-+                            param: branding.product.name,
-+                        })
-+                        .subscribe(res => {
-+                            // Placeholder text
-+                            this.placeholderText = res;
-+                        });
-+                } else {
-+                    this.translate
-+                        .get('GLOBAL_SEARCH.PLACEHOLDER', { param: 'Harbor' })
-+                        .subscribe(res => {
-+                            // Placeholder text
-+                            this.placeholderText = res;
-+                        });
-+                }
-+            },
-+            error: () => {
-+                console.error('branding info load failed in the global search');
-+                // fallback on error
-+                this.translate
-+                    .get('GLOBAL_SEARCH.PLACEHOLDER', { param: 'Harbor' })
-+                    .subscribe(res => {
-+                        // Placeholder text
-+                        this.placeholderText = res;
-+                    });
-+            },
-+        });
-+
-         // custom skin
+-        // custom skin
 -        let customSkinObj = this.skinableConfig.getSkinConfig();
 -        if (
 -            customSkinObj &&
@@ -1428,33 +1344,28 @@ index 049dce8d38..a6b2697f29 100644
 -                    this.placeholderText = res;
 -                });
 -        }
-+        // let customSkinObj = this.skinableConfig.getSkinConfig();
-+        // if (
-+        //     customSkinObj &&
-+        //     customSkinObj.product &&
-+        //     customSkinObj.product.name
-+        // ) {
-+        //     this.translate
-+        //         .get('GLOBAL_SEARCH.PLACEHOLDER', {
-+        //             param: customSkinObj.product.name,
-+        //         })
-+        //         .subscribe(res => {
-+        //             // Placeholder text
-+        //             this.placeholderText = res;
-+        //         });
-+        // } else {
-+        //     this.translate
-+        //         .get('GLOBAL_SEARCH.PLACEHOLDER', { param: 'Harbor' })
-+        //         .subscribe(res => {
-+        //             // Placeholder text
-+        //             this.placeholderText = res;
-+        //         });
-+        // }
++        this.skinableConfig.getBrandingInfo(false).subscribe({
++            next: branding => {
++                const name = branding?.product?.name || 'Harbor';
++                this.translate
++                    .get('GLOBAL_SEARCH.PLACEHOLDER', { param: name })
++                    .subscribe(res => {
++                        this.placeholderText = res;
++                    });
++            },
++            error: () => {
++                this.translate
++                    .get('GLOBAL_SEARCH.PLACEHOLDER', { param: 'Harbor' })
++                    .subscribe(res => {
++                        this.placeholderText = res;
++                    });
++            },
++        });
  
          this.searchSub = this.searchTerms
              .pipe(debounceTime(deBounceTime))
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.html b/src/portal/src/app/shared/components/navigator/navigator.component.html
-index 5f4e3a2524..b218ddbb1a 100644
+index 5f4e3a252..b218ddbb1 100644
 --- a/src/portal/src/app/shared/components/navigator/navigator.component.html
 +++ b/src/portal/src/app/shared/components/navigator/navigator.component.html
 @@ -2,15 +2,15 @@
@@ -1478,7 +1389,7 @@ index 5f4e3a2524..b218ddbb1a 100644
              }}</span>
          </a>
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.ts b/src/portal/src/app/shared/components/navigator/navigator.component.ts
-index 2f665a9f60..1e079eb6d3 100644
+index 2f665a9f6..34e4610f4 100644
 --- a/src/portal/src/app/shared/components/navigator/navigator.component.ts
 +++ b/src/portal/src/app/shared/components/navigator/navigator.component.ts
 @@ -46,6 +46,8 @@ import { map } from 'rxjs/operators';
@@ -1499,29 +1410,22 @@ index 2f665a9f60..1e079eb6d3 100644
      isCoreServiceAvailable: boolean = true;
      constructor(
          private session: SessionService,
-@@ -77,7 +79,20 @@ export class NavigatorComponent implements OnInit {
+@@ -76,8 +78,12 @@ export class NavigatorComponent implements OnInit {
+     ) {}
  
      ngOnInit(): void {
-         // custom skin
+-        // custom skin
 -        this.customStyle = this.skinableConfig.getSkinConfig();
-+        // this.BrandingInfo = this.skinableConfig.getBrandingConfig();
-+
 +        this.skinableConfig.getBrandingInfo(false).subscribe({
 +            next: branding => {
-+                console.log('branding data 6 navigator component', branding);
 +                this.BrandingInfo = branding;
-+            },
-+            error: () => {
-+                console.error(
-+                    'branding info load failed in the about component'
-+                );
 +            },
 +        });
 +
          this.selectedLang = this.translate.currentLang as SupportedLanguage;
          if (this.selectedLang) {
              registerLocaleData(
-@@ -286,15 +301,15 @@ export class NavigatorComponent implements OnInit {
+@@ -286,15 +292,15 @@ export class NavigatorComponent implements OnInit {
  
      getBgColor(): string {
          if (
@@ -1542,7 +1446,7 @@ index 2f665a9f60..1e079eb6d3 100644
          }
          return null;
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index e0f766d0e1..2237c34590 100644
+index df5a4bf2b..fea4f7bd9 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
 @@ -773,6 +773,7 @@
@@ -1553,22 +1457,44 @@ index e0f766d0e1..2237c34590 100644
          "PROJECT_QUOTAS": "Project Quotas",
          "VULNERABILITY": "Vulnerability",
          "GC": "Garbage Collection",
-@@ -1896,6 +1897,10 @@
+@@ -1897,6 +1898,19 @@
          "DATE_PICKER_SELECT_YEAR_TEXT": "Select year, the current year is {CALENDAR_YEAR}",
          "DATE_PICKER_SELECTED_LABEL": "{FULL_DATE} - Selected"
      },
 +    "BRANDING": {
 +        "TITLE": "Branding",
-+        "MESSAGE": "{\r\n  \"headerBgColor\": {\r\n    \"darkMode\": \"#0d1117\",\r\n    \"lightMode\": \"#ffffff\"\r\n  },\r\n  \"loginBgImg\": \"https:\/\/example.com\/bg.png\",\r\n  \"loginTitle\": \"Welcome to Harbor\",\r\n  \"product\": {\r\n    \"name\": \"Harbor Enterprise\",\r\n    \"logo\": \"https:\/\/example.com\/logo.png\",\r\n    \"introduction\": \"Your trusted cloud-native registry\"\r\n  }\r\n}"
++        "PRODUCT": "Product",
++        "PRODUCT_NAME": "Product Name",
++        "PRODUCT_LOGO": "Product Logo URL",
++        "PRODUCT_INTRODUCTION": "Product Introduction",
++        "LOGIN": "Login Page",
++        "LOGIN_TITLE": "Login Title",
++        "LOGIN_BG_IMG": "Login Background Image URL",
++        "HEADER_COLORS": "Header Colors",
++        "HEADER_BG_COLOR_LIGHT": "Header Background (Light Mode)",
++        "HEADER_BG_COLOR_DARK": "Header Background (Dark Mode)"
 +    },
      "BANNER_MESSAGE": {
          "BANNER_MESSAGE": "Banner Message",
          "MESSAGE_TYPE": "Message type",
+diff --git a/src/portal/src/images/container-registry-logo.svg b/src/portal/src/images/container-registry-logo.svg
+deleted file mode 100644
+index fee4f28c3..000000000
+--- a/src/portal/src/images/container-registry-logo.svg
++++ /dev/null
+@@ -1,7 +0,0 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="793.7" height="1122.52" viewBox="0 0 210 297">
+-  <g fill="#d03808">
+-    <path d="M93.71 155.34l-.06 1.5-10.9 6.3-1.27-2.17 10.9-6.3zM45.88 181.45l1.24 2.18 11.55-6.65-1.25-2.17zM64.02 171.1l1.27 2.18 10.87-6.31-1.24-2.18zM127.25 163.15l1.27-2.18-10.9-6.3-1.32.67.05 1.5zM151.34 176.98l1.24-2.17 11.55 6.64-1.25 2.18zM133.82 166.97l1.27-2.18 10.9 6.3-1.28 2.19z" class="st0"/>
+-    <path d="M106.1 115.08h-2.51V102.5h2.52zM104.86 135.73l-1.27-.5v-12.6h2.52v12.6zM103.59 81.61h2.52v13.33h-2.52z" class="st1"/>
+-  </g>
+-  <path fill="#fff" d="M107.79 70.71l63.2 36.47 2.13 1.22.68.4v79.35l-.68.4-2.13 1.21-31.61 18.25-26.78 15.48-2.04 1.16v-12.87l.68-.4 22.53-13.01 22.56-13.02 6.26-3.6v-60.08l-52.03 30.01v72.97l-.68.4-2.12 1.21-2.12 1.22-.68.4-.68-.4-2.12-1.22-2.13-1.22-.68-.4v-72.96l-51.99-30.04v60.15l4.05 2.32 35.24 20.37 12.03 6.93.68.4v12.84l-2.04-1.16L70.54 208l-31.56-18.25-2.12-1.21-.65-.4v-79.33l.68-.4 2.12-1.21c21.06-12.17 42.15-24.33 63.2-36.47l2.13-1.22.68-.4.68.4zm-54.88 41.3L105 142.07l52.08-30.04-47.72-27.53-4.36-2.55-8.6 4.98-.6.34c-14.3 8.24-28.59 16.5-42.88 24.76z" class="st0" style="fill:#ffffff;fill-opacity:1"/>
+-</svg>
 diff --git a/src/server/v2.0/handler/systeminfo.go b/src/server/v2.0/handler/systeminfo.go
-index 6c673e08c8..834f60fe2d 100644
+index 6c673e08c..35c8a41fc 100644
 --- a/src/server/v2.0/handler/systeminfo.go
 +++ b/src/server/v2.0/handler/systeminfo.go
-@@ -51,6 +51,47 @@ func (s *sysInfoAPI) GetSystemInfo(ctx context.Context, _ systeminfo.GetSystemIn
+@@ -51,6 +51,24 @@ func (s *sysInfoAPI) GetSystemInfo(ctx context.Context, _ systeminfo.GetSystemIn
  	return systeminfo.NewGetSystemInfoOK().WithPayload(s.convertInfo(data))
  }
  
@@ -1581,36 +1507,13 @@ index 6c673e08c8..834f60fe2d 100644
 +}
 +
 +func (s *sysInfoAPI) UpdateBrandingInfo(ctx context.Context, params systeminfo.UpdateBrandingInfoParams) middleware.Responder {
-+	var err error
-+	sc, ok := security.FromContext(ctx)
-+	if ok && sc.IsAuthenticated() && sc.IsSysAdmin() {
-+		err = s.ctl.UpdateBrandingConfig(ctx, params.BrandingConfig)
-+		if err != nil {
-+			return s.SendError(ctx, err)
-+		}
-+
-+		return systeminfo.NewUpdateBrandingInfoOK()
-+	} else {
-+		return systeminfo.NewUpdateBrandingInfoUnauthorized()
++	if err := s.RequireSystemAccess(ctx, rbac.ActionUpdate, rbac.ResourceConfiguration); err != nil {
++		return s.SendError(ctx, err)
 +	}
-+	// return systeminfo.NewGetSystemInfoOK().WithPayload(s.convertInfo(data))
-+
-+	// something like the below we can make for the above
-+
-+	// if err := g.RequireSystemAccess(ctx, rbac.ActionCreate, rbac.ResourceGarbageCollection); err != nil {
-+	// 	return g.SendError(ctx, err)
-+	// }
-+	// id, err := g.kick(ctx, params.Schedule.Schedule.Type, params.Schedule.Schedule.Cron, params.Schedule.Parameters)
-+	// if err != nil {
-+	// 	return g.SendError(ctx, err)
-+	// }
-+	// // replace the /api/v2.0/system/gc/schedule/{id} to /api/v2.0/system/gc/{id}
-+	// lastSlashIndex := strings.LastIndex(params.HTTPRequest.URL.Path, "/")
-+	// if lastSlashIndex != -1 {
-+	// 	location := fmt.Sprintf("%s/%d", params.HTTPRequest.URL.Path[:lastSlashIndex], id)
-+	// 	return operation.NewCreateGCScheduleCreated().WithLocation(location)
-+	// }
-+	// return operation.NewCreateGCScheduleCreated()
++	if err := s.ctl.UpdateBrandingConfig(ctx, params.BrandingConfig); err != nil {
++		return s.SendError(ctx, err)
++	}
++	return systeminfo.NewUpdateBrandingInfoOK()
 +}
 +
  func (s *sysInfoAPI) GetCert(ctx context.Context, _ systeminfo.GetCertParams) middleware.Responder {
