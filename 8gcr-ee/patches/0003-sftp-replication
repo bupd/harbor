@@ -42,7 +42,7 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 src/pkg/reg/adapter/storage/sftp_factory.go
 
 diff --git a/src/controller/registry/controller.go b/src/controller/registry/controller.go
-index b2b8038b33..0d80b50b54 100644
+index b2b8038b3..0d80b50b5 100644
 --- a/src/controller/registry/controller.go
 +++ b/src/controller/registry/controller.go
 @@ -92,7 +92,7 @@ func (c *controller) validate(ctx context.Context, registry *model.Registry) err
@@ -55,7 +55,7 @@ index b2b8038b33..0d80b50b54 100644
  		return err
  	}
 diff --git a/src/controller/replication/transfer/image/transfer.go b/src/controller/replication/transfer/image/transfer.go
-index d898220266..17b72d7fcc 100644
+index d89822026..17b72d7fc 100644
 --- a/src/controller/replication/transfer/image/transfer.go
 +++ b/src/controller/replication/transfer/image/transfer.go
 @@ -494,12 +494,12 @@ func (t *transfer) pushManifest(manifest distribution.Manifest, repository, tag
@@ -74,7 +74,7 @@ index d898220266..17b72d7fcc 100644
  		return err
  	}
 diff --git a/src/go.mod b/src/go.mod
-index 505248a269..b150eb5529 100644
+index 505248a26..b150eb552 100644
 --- a/src/go.mod
 +++ b/src/go.mod
 @@ -147,6 +147,7 @@ require (
@@ -95,7 +95,7 @@ index 505248a269..b150eb5529 100644
  	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
  	github.com/docker/distribution => github.com/distribution/distribution v2.8.2+incompatible
 diff --git a/src/go.sum b/src/go.sum
-index 4ca1adff55..2f06dfa243 100644
+index 4ca1adff5..2f06dfa24 100644
 --- a/src/go.sum
 +++ b/src/go.sum
 @@ -386,6 +386,8 @@ github.com/klauspost/compress v1.18.1 h1:bcSGx7UbpBqMChDtsF28Lw6v/G94LPrrbMbdC3J
@@ -203,7 +203,7 @@ index 4ca1adff55..2f06dfa243 100644
  golang.org/x/tools v0.39.0/go.mod h1:JnefbkDPyD8UU2kI5fuf8ZX4/yUeh9W877ZeBONxUqQ=
  golang.org/x/xerrors v0.0.0-20190410155217-1f06c39b4373/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 diff --git a/src/jobservice/job/impl/replication/replication.go b/src/jobservice/job/impl/replication/replication.go
-index a69e6f2e26..27a33c454e 100644
+index a69e6f2e2..27a33c454 100644
 --- a/src/jobservice/job/impl/replication/replication.go
 +++ b/src/jobservice/job/impl/replication/replication.go
 @@ -55,6 +55,8 @@ import (
@@ -216,7 +216,7 @@ index a69e6f2e26..27a33c454e 100644
  )
  
 diff --git a/src/lib/endpoint.go b/src/lib/endpoint.go
-index 95e6d61239..ce36f6d757 100644
+index 95e6d6123..ce36f6d75 100644
 --- a/src/lib/endpoint.go
 +++ b/src/lib/endpoint.go
 @@ -24,7 +24,7 @@ import (
@@ -257,7 +257,7 @@ index 95e6d61239..ce36f6d757 100644
 +	return fmt.Sprintf("%s://%s%s", url_.Scheme, url_.Host, url_.Path), nil
  }
 diff --git a/src/lib/endpoint_test.go b/src/lib/endpoint_test.go
-index 11cd67b79c..0edab1b9f2 100644
+index 11cd67b79..0edab1b9f 100644
 --- a/src/lib/endpoint_test.go
 +++ b/src/lib/endpoint_test.go
 @@ -44,18 +44,18 @@ var testcases = []struct {
@@ -285,7 +285,7 @@ index 11cd67b79c..0edab1b9f2 100644
  	}
  
 diff --git a/src/pkg/p2p/preheat/provider/dragonfly.go b/src/pkg/p2p/preheat/provider/dragonfly.go
-index ebfb429e71..19da8f363f 100644
+index ebfb429e7..19da8f363 100644
 --- a/src/pkg/p2p/preheat/provider/dragonfly.go
 +++ b/src/pkg/p2p/preheat/provider/dragonfly.go
 @@ -202,7 +202,7 @@ func (dd *DragonflyDriver) GetHealth() (*DriverStatus, error) {
@@ -298,7 +298,7 @@ index ebfb429e71..19da8f363f 100644
  		return nil, err
  	}
 diff --git a/src/pkg/p2p/preheat/provider/kraken.go b/src/pkg/p2p/preheat/provider/kraken.go
-index 3d1ceafb19..8762f3b7bb 100644
+index 3d1ceafb1..8762f3b7b 100644
 --- a/src/pkg/p2p/preheat/provider/kraken.go
 +++ b/src/pkg/p2p/preheat/provider/kraken.go
 @@ -60,7 +60,7 @@ func (kd *KrakenDriver) GetHealth() (*DriverStatus, error) {
@@ -312,7 +312,7 @@ index 3d1ceafb19..8762f3b7bb 100644
  	}
 diff --git a/src/pkg/reg/adapter/storage/adapter.go b/src/pkg/reg/adapter/storage/adapter.go
 new file mode 100644
-index 0000000000..93871da751
+index 000000000..93871da75
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/adapter.go
 @@ -0,0 +1,553 @@
@@ -871,7 +871,7 @@ index 0000000000..93871da751
 +}
 diff --git a/src/pkg/reg/adapter/storage/drivers/s3/driver.go b/src/pkg/reg/adapter/storage/drivers/s3/driver.go
 new file mode 100644
-index 0000000000..392b82f53a
+index 000000000..392b82f53
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/drivers/s3/driver.go
 @@ -0,0 +1,18 @@
@@ -895,7 +895,7 @@ index 0000000000..392b82f53a
 +var _ health.Checker = (*Driver)(nil)
 diff --git a/src/pkg/reg/adapter/storage/drivers/sftp/driver.go b/src/pkg/reg/adapter/storage/drivers/sftp/driver.go
 new file mode 100644
-index 0000000000..084eba24b5
+index 000000000..084eba24b
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/drivers/sftp/driver.go
 @@ -0,0 +1,383 @@
@@ -1284,7 +1284,7 @@ index 0000000000..084eba24b5
 +)
 diff --git a/src/pkg/reg/adapter/storage/drivers/sftp/fileinfo.go b/src/pkg/reg/adapter/storage/drivers/sftp/fileinfo.go
 new file mode 100644
-index 0000000000..cb8a0943eb
+index 000000000..cb8a0943e
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/drivers/sftp/fileinfo.go
 @@ -0,0 +1,76 @@
@@ -1366,7 +1366,7 @@ index 0000000000..cb8a0943eb
 +var _ storagedriver.FileInfo = fileInfoMock{}
 diff --git a/src/pkg/reg/adapter/storage/drivers/sftp/filewriter.go b/src/pkg/reg/adapter/storage/drivers/sftp/filewriter.go
 new file mode 100644
-index 0000000000..2e97d23203
+index 000000000..2e97d2320
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/drivers/sftp/filewriter.go
 @@ -0,0 +1,76 @@
@@ -1448,7 +1448,7 @@ index 0000000000..2e97d23203
 +}
 diff --git a/src/pkg/reg/adapter/storage/drivers/sftp/pool/net.go b/src/pkg/reg/adapter/storage/drivers/sftp/pool/net.go
 new file mode 100644
-index 0000000000..be0f7f3d86
+index 000000000..be0f7f3d8
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/drivers/sftp/pool/net.go
 @@ -0,0 +1,33 @@
@@ -1487,7 +1487,7 @@ index 0000000000..be0f7f3d86
 +}
 diff --git a/src/pkg/reg/adapter/storage/drivers/sftp/pool/pool.go b/src/pkg/reg/adapter/storage/drivers/sftp/pool/pool.go
 new file mode 100644
-index 0000000000..0c68fe10c2
+index 000000000..0c68fe10c
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/drivers/sftp/pool/pool.go
 @@ -0,0 +1,182 @@
@@ -1675,7 +1675,7 @@ index 0000000000..0c68fe10c2
 +}
 diff --git a/src/pkg/reg/adapter/storage/drivers/sftp/pool/ssh.go b/src/pkg/reg/adapter/storage/drivers/sftp/pool/ssh.go
 new file mode 100644
-index 0000000000..83edf3bee6
+index 000000000..83edf3bee
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/drivers/sftp/pool/ssh.go
 @@ -0,0 +1,224 @@
@@ -1905,7 +1905,7 @@ index 0000000000..83edf3bee6
 +}
 diff --git a/src/pkg/reg/adapter/storage/health/health.go b/src/pkg/reg/adapter/storage/health/health.go
 new file mode 100644
-index 0000000000..19565f2259
+index 000000000..19565f225
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/health/health.go
 @@ -0,0 +1,7 @@
@@ -1918,7 +1918,7 @@ index 0000000000..19565f2259
 +}
 diff --git a/src/pkg/reg/adapter/storage/s3_factory.go b/src/pkg/reg/adapter/storage/s3_factory.go
 new file mode 100644
-index 0000000000..f4ced9d063
+index 000000000..f4ced9d06
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/s3_factory.go
 @@ -0,0 +1,124 @@
@@ -2048,7 +2048,7 @@ index 0000000000..f4ced9d063
 +}
 diff --git a/src/pkg/reg/adapter/storage/sftp_factory.go b/src/pkg/reg/adapter/storage/sftp_factory.go
 new file mode 100644
-index 0000000000..d4bd1a29d0
+index 000000000..d4bd1a29d
 --- /dev/null
 +++ b/src/pkg/reg/adapter/storage/sftp_factory.go
 @@ -0,0 +1,57 @@
@@ -2110,7 +2110,7 @@ index 0000000000..d4bd1a29d0
 +	return nil
 +}
 diff --git a/src/pkg/reg/manager.go b/src/pkg/reg/manager.go
-index e6149bfdb0..6ebc4c6b77 100644
+index e6149bfdb..6ebc4c6b7 100644
 --- a/src/pkg/reg/manager.go
 +++ b/src/pkg/reg/manager.go
 @@ -57,6 +57,8 @@ import (
@@ -2123,7 +2123,7 @@ index e6149bfdb0..6ebc4c6b77 100644
  
  var (
 diff --git a/src/pkg/reg/model/registry.go b/src/pkg/reg/model/registry.go
-index 0236a0b785..a92df68382 100644
+index 0236a0b78..a92df6838 100644
 --- a/src/pkg/reg/model/registry.go
 +++ b/src/pkg/reg/model/registry.go
 @@ -35,10 +35,11 @@ const (
@@ -2143,7 +2143,7 @@ index 0236a0b785..a92df68382 100644
  	FilterStyleTypeText  = "input"
  	FilterStyleTypeRadio = "radio"
 diff --git a/src/pkg/scan/dao/scanner/model.go b/src/pkg/scan/dao/scanner/model.go
-index 8ef1de1e4b..7504f02ffb 100644
+index 8ef1de1e4..7504f02ff 100644
 --- a/src/pkg/scan/dao/scanner/model.go
 +++ b/src/pkg/scan/dao/scanner/model.go
 @@ -106,7 +106,7 @@ func (r *Registration) Validate(checkUUID bool) error {
@@ -2156,7 +2156,7 @@ index 8ef1de1e4b..7504f02ffb 100644
  		return errors.Wrap(err, "scanner registration validate")
  	}
 diff --git a/src/server/v2.0/handler/registry.go b/src/server/v2.0/handler/registry.go
-index 4ff2c18b89..aecadf0baf 100644
+index 4ff2c18b8..aecadf0ba 100644
 --- a/src/server/v2.0/handler/registry.go
 +++ b/src/server/v2.0/handler/registry.go
 @@ -240,7 +240,7 @@ func (r *registryAPI) PingRegistry(ctx context.Context, params operation.PingReg
