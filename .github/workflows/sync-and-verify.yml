@@ -34,6 +34,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Configure ours merge driver
+        run: git config merge.ours.driver true
+
       - name: Fetch harbor-next
         run: |
           git remote add harbor-next https://github.com/container-registry/harbor-next.git || true

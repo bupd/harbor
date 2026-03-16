@@ -1,0 +1,4 @@
+# Keep 8gcr's CLAUDE.md during merges from harbor-next.
+# The 8gcr version is a maintained superset of harbor-next's.
+# Requires: git config merge.ours.driver true
+CLAUDE.md merge=ours
