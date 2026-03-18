@@ -1,0 +1,193 @@
+version: '3'
+
+set:
+  - errexit
+  - pipefail
+
+vars:
+  UPSTREAM_REMOTE: '{{.UPSTREAM_REMOTE | default "harbor-next"}}'
+  UPSTREAM_URL: '{{.UPSTREAM_URL | default "https://github.com/container-registry/harbor-next.git"}}'
+  UPSTREAM_BRANCH: '{{.UPSTREAM_BRANCH | default "main"}}'
+  PATCHES_DIR: "8gcr-ee/patches"
+  RERERE_DIR: "8gcr-ee/.rr-cache"
+
+tasks:
+  sync-and-verify:
+    desc: "Full sync: merge upstream, verify/rebase patches, push"
+    cmds:
+      - task: fetch-upstream
+      - task: merge-upstream
+      - task: sanity-check
+      - task: verify-patches
+      - task: save-rerere
+      - task: push
+
+  fetch-upstream:
+    desc: "Add and fetch harbor-next remote"
+    cmds:
+      - git remote add {{.UPSTREAM_REMOTE}} {{.UPSTREAM_URL}} 2>/dev/null || true
+      - git fetch {{.UPSTREAM_REMOTE}} {{.UPSTREAM_BRANCH}}
+      - |
+        count=$(git rev-list HEAD..{{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}} --count)
+        echo "$count new commit(s) from {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}}"
+
+  merge-upstream:
+    desc: "Merge harbor-next/main into current branch with rerere"
+    cmds:
+      - |
+        count=$(git rev-list HEAD..{{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}} --count)
+        if [ "$count" -eq 0 ]; then
+          echo "Nothing to merge — already up to date"
+          exit 0
+        fi
+
+        # Configure merge drivers and rerere
+        git config merge.ours.driver true
+        git config rerere.enabled true
+        git config rerere.autoUpdate true
+        if [ -d "{{.RERERE_DIR}}" ]; then
+          mkdir -p .git/rr-cache
+          cp -r {{.RERERE_DIR}}/* .git/rr-cache/ 2>/dev/null || true
+          echo "Restored rerere cache"
+        fi
+
+        if ! git merge {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}} --no-edit; then
+          echo "ERROR: Merge conflict with {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}}"
+          echo ""
+          echo "Conflicting files:"
+          git diff --name-only --diff-filter=U
+          echo ""
+          echo "Resolve manually, then run: task sync:push"
+          exit 1
+        fi
+        echo "Merge complete"
+
+  sanity-check:
+    desc: "Verify critical files exist after merge"
+    cmds:
+      - |
+        test -f {{.PATCHES_DIR}}/series || { echo "ERROR: {{.PATCHES_DIR}}/series missing after merge"; exit 1; }
+        test -d .github || { echo "ERROR: .github directory missing after merge"; exit 1; }
+        echo "Sanity check passed"
+
+  verify-patches:
+    desc: "Verify 8gcr-ee patches apply cleanly, rebase if needed"
+    cmds:
+      - |
+        # Enable rerere
+        git config rerere.enabled true
+        git config rerere.autoUpdate true
+        if [ -d "{{.RERERE_DIR}}" ]; then
+          mkdir -p .git/rr-cache
+          cp -r {{.RERERE_DIR}}/* .git/rr-cache/ 2>/dev/null || true
+        fi
+
+        main_branch=$(git rev-parse --abbrev-ref HEAD)
+        main_sha=$(git rev-parse HEAD)
+
+        echo "=== Phase 1: Try direct patch apply ==="
+        git checkout -b wip/verify-patches HEAD
+        stg init
+
+        if stg import -3 -S {{.PATCHES_DIR}}/series; then
+          echo "All patches applied cleanly"
+          git checkout "$main_branch"
+          git branch -D wip/verify-patches
+          exit 0
+        fi
+
+        echo "Direct apply failed, attempting rebase..."
+
+        # Clean up failed apply
+        stg repair 2>/dev/null || true
+        git reset --hard HEAD
+        git checkout "$main_branch"
+        git branch -D wip/verify-patches 2>/dev/null || true
+
+        echo "=== Phase 2: Rebase fallback ==="
+        base_sha=$(head -1 {{.PATCHES_DIR}}/series | sed -n 's/^# This series applies on Git commit //p')
+        if [ -z "$base_sha" ]; then
+          echo "ERROR: Could not parse base commit from series file"
+          exit 1
+        fi
+        echo "Base commit: $base_sha"
+
+        if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+          echo "Base commit not found locally, fetching from {{.UPSTREAM_REMOTE}}"
+          git fetch {{.UPSTREAM_REMOTE}} "$base_sha" || true
+          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            echo "ERROR: Base commit $base_sha not reachable"
+            exit 1
+          fi
+        fi
+
+        # Copy patches before checkout (directory may not exist at base commit)
+        cp -r {{.PATCHES_DIR}} /tmp/patches-for-rebase
+
+        git checkout -b wip/rebase-patches "$base_sha"
+        stg init
+        stg import -3 -S /tmp/patches-for-rebase/series
+
+        if ! stg rebase "$main_branch"; then
+          failed_patch=$(stg top 2>/dev/null || echo "unknown")
+          echo "ERROR: Rebase failed on patch: $failed_patch"
+          echo "Conflicting files:"
+          git diff --name-only --diff-filter=U 2>/dev/null
+          echo ""
+          echo "Manual resolution:"
+          echo "  git add <resolved-files>"
+          echo "  stg refresh"
+          echo "  stg push -a"
+          echo "  stg export -d {{.PATCHES_DIR}}/"
+          git checkout "$main_branch" 2>/dev/null || true
+          git branch -D wip/rebase-patches 2>/dev/null || true
+          rm -rf /tmp/patches-for-rebase
+          exit 1
+        fi
+
+        echo "Rebase succeeded, exporting patches..."
+
+        # Preserve README
+        readme_path="{{.PATCHES_DIR}}/README.md"
+        if [ -f "$readme_path" ]; then
+          cp "$readme_path" /tmp/patches-readme.md
+        fi
+
+        stg export -d {{.PATCHES_DIR}}/
+
+        # Restore README
+        if [ -f /tmp/patches-readme.md ]; then
+          cp /tmp/patches-readme.md "$readme_path"
+        fi
+
+        # Update base commit in series file
+        sed -i "1s|^# This series applies on Git commit .*|# This series applies on Git commit $main_sha|" {{.PATCHES_DIR}}/series
+
+        # Commit rebased patches from main
+        git checkout "$main_branch"
+        git add {{.PATCHES_DIR}}/
+        git commit -sm "fix(patches): rebase patches on updated main"
+        git branch -D wip/rebase-patches 2>/dev/null || true
+        rm -rf /tmp/patches-for-rebase
+
+        echo "Patches rebased and committed"
+
+  save-rerere:
+    desc: "Save git rerere cache to repo (if any resolutions recorded)"
+    cmds:
+      - |
+        if [ -d .git/rr-cache ] && [ "$(ls -A .git/rr-cache 2>/dev/null)" ]; then
+          mkdir -p {{.RERERE_DIR}}
+          cp -r .git/rr-cache/* {{.RERERE_DIR}}/
+          git add {{.RERERE_DIR}}/
+          git diff --cached --quiet {{.RERERE_DIR}}/ 2>/dev/null || \
+            git commit -sm "chore: update git rerere cache"
+          echo "Rerere cache saved"
+        else
+          echo "No rerere cache to save"
+        fi
+
+  push:
+    desc: "Push current branch to origin"
+    cmds:
+      - git push --force-with-lease origin HEAD

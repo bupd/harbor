@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   issues: write
+  workflows: write
 
 concurrency:
   group: sync-and-verify
@@ -17,10 +18,8 @@ jobs:
   sync-and-verify:
     runs-on: ubuntu-latest
     steps:
-      # ── Phase 1: Sync ──
-
       - name: Checkout main
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
@@ -29,86 +28,15 @@ jobs:
           git fetch origin
           git rebase origin/main
 
-      - name: Configure git user
+      - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Configure ours merge driver
-        run: git config merge.ours.driver true
-
-      - name: Fetch harbor-next
-        run: |
-          git remote add harbor-next https://github.com/container-registry/harbor-next.git || true
-          git fetch harbor-next main
-
-      - name: Count new commits
-        id: sync
-        run: |
-          count=$(git rev-list HEAD..harbor-next/main --count)
-          echo "new_commits=$count" >> "$GITHUB_OUTPUT"
-          if [ "$count" -eq 0 ]; then
-            echo "No new commits from harbor-next/main"
-          else
-            echo "$count new commit(s) to merge"
-          fi
-
-      - name: Merge harbor-next/main
-        if: steps.sync.outputs.new_commits != '0'
-        run: |
-          if ! git merge harbor-next/main --no-edit; then
-            git merge --abort
-            echo "::error::Merge conflict with harbor-next/main"
-
-            main_head=$(git rev-parse HEAD)
-            next_head=$(git rev-parse harbor-next/main)
-            run_url="${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}"
-
-            body="Merge conflict while syncing \`harbor-next/main\` into \`main\`.
-
-          **Main HEAD:** \`${main_head}\`
-          **harbor-next/main:** \`${next_head}\`
-          **Workflow run:** ${run_url}
-
-          Resolve manually:
-          \`\`\`bash
-          git fetch origin main
-          git checkout main
-          git remote add harbor-next https://github.com/container-registry/harbor-next.git || true
-          git fetch harbor-next main
-          git merge harbor-next/main
-          # resolve conflicts
-          git push origin main
-          \`\`\`"
-
-            existing=$(gh issue list --label sync --state open --json number --jq '.[0].number // empty')
-            if [ -n "$existing" ]; then
-              gh issue comment "$existing" --body "$body"
-            else
-              gh issue create \
-                --title "Sync conflict: harbor-next/main into main" \
-                --label sync \
-                --body "$body"
-            fi
-            exit 1
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SERVER_URL: ${{ github.server_url }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-
-      - name: Sanity check critical files
-        if: steps.sync.outputs.new_commits != '0'
-        run: |
-          test -f 8gcr-ee/patches/series || { echo "::error::8gcr-ee/patches/series missing after merge"; exit 1; }
-          test -d .github || { echo "::error::.github directory missing after merge"; exit 1; }
-
-      - name: Push merged changes
-        if: steps.sync.outputs.new_commits != '0'
-        run: git push --force-with-lease origin main
-
-      # ── Phase 2: Verify Patches ──
+      - name: Install Task
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
+        with:
+          version: 3.x
 
       - name: Install StGit
         env:
@@ -119,170 +47,29 @@ jobs:
           rm /tmp/stgit.deb
           stg --version
 
-      - name: Configure rerere
+      - name: Sync and verify
+        id: sync
+        run: task sync:sync-and-verify
+        continue-on-error: true
+
+      - name: Create issue on failure
+        if: steps.sync.outcome == 'failure'
         run: |
-          git config rerere.enabled true
-          git config rerere.autoUpdate true
-
-      - name: Restore rerere cache
-        run: |
-          if [ -d 8gcr-ee/.rr-cache ]; then
-            mkdir -p .git/rr-cache
-            cp -r 8gcr-ee/.rr-cache/* .git/rr-cache/ 2>/dev/null || true
-            echo "Restored rerere cache"
-          else
-            echo "No rerere cache to restore"
-          fi
-
-      - name: Try applying patches
-        id: apply
-        run: |
-          git checkout -b wip/verify-patches HEAD
-          stg init
-          if stg import -S 8gcr-ee/patches/series; then
-            echo "result=success" >> "$GITHUB_OUTPUT"
-            echo "All patches applied cleanly"
-          else
-            echo "result=failed" >> "$GITHUB_OUTPUT"
-            echo "::warning::Clean patch apply failed, will attempt stg rebase"
-          fi
-
-      # ── Phase 2b: Rebase Fallback ──
-
-      - name: Clean up failed apply
-        if: steps.apply.outputs.result == 'failed'
-        run: |
-          stg repair 2>/dev/null || true
-          git reset --hard HEAD
-          git checkout main
-          git branch -D wip/verify-patches 2>/dev/null || true
-
-      - name: Parse base commit from series
-        if: steps.apply.outputs.result == 'failed'
-        id: base
-        run: |
-          base_sha=$(head -1 8gcr-ee/patches/series | sed -n 's/^# This series applies on Git commit //p')
-          if [ -z "$base_sha" ]; then
-            echo "::error::Could not parse base commit from series file"
-            exit 1
-          fi
-          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
-          echo "Base commit: $base_sha"
-
-      - name: Verify base commit is available
-        if: steps.apply.outputs.result == 'failed'
-        run: |
-          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            echo "Base commit not found locally, fetching it from harbor-next"
-            git fetch harbor-next "${BASE_SHA}"
-            if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-              echo "::error::Base commit ${BASE_SHA} not reachable"
-              exit 1
-            fi
-          fi
-        env:
-          BASE_SHA: ${{ steps.base.outputs.sha }}
-
-      - name: Import patches on base commit and rebase
-        if: steps.apply.outputs.result == 'failed'
-        id: rebase
-        run: |
-          # Copy patches before checkout (directory won't exist at base commit)
-          cp -r 8gcr-ee/patches /tmp/patches-for-rebase
-
-          git checkout -b wip/rebase-patches "${BASE_SHA}"
-          stg init
-          stg import -S /tmp/patches-for-rebase/series
-
-          if stg rebase main; then
-            echo "result=success" >> "$GITHUB_OUTPUT"
-            echo "Rebase succeeded"
-          else
-            echo "result=failed" >> "$GITHUB_OUTPUT"
-            failed_patch=$(stg top 2>/dev/null || echo "unknown")
-            conflicts=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "unknown")
-            echo "failed_patch=$failed_patch" >> "$GITHUB_OUTPUT"
-            echo "conflicts<<EOF" >> "$GITHUB_OUTPUT"
-            echo "$conflicts" >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
-            echo "::error::Rebase failed on patch: $failed_patch"
-          fi
-        env:
-          BASE_SHA: ${{ steps.base.outputs.sha }}
-
-      - name: Export rebased patches
-        if: steps.apply.outputs.result == 'failed' && steps.rebase.outputs.result == 'success'
-        run: |
-          # Preserve README before stg export replaces the directory
-          cp 8gcr-ee/patches/README.md /tmp/patches-readme.md
-
-          stg export -d 8gcr-ee/patches/
-
-          # Restore README
-          cp /tmp/patches-readme.md 8gcr-ee/patches/README.md
-
-          # Update base commit in series file
-          main_sha=$(git rev-parse main)
-          sed -i "1s|^# This series applies on Git commit .*|# This series applies on Git commit $main_sha|" 8gcr-ee/patches/series
-
-          # Persist rerere cache
-          if [ -d .git/rr-cache ] && [ "$(ls -A .git/rr-cache 2>/dev/null)" ]; then
-            mkdir -p 8gcr-ee/.rr-cache
-            cp -r .git/rr-cache/* 8gcr-ee/.rr-cache/
-          fi
-
-          # Commit and push from main
-          git checkout main
-          git add 8gcr-ee/patches/
-          if [ -d 8gcr-ee/.rr-cache ] && [ "$(ls -A 8gcr-ee/.rr-cache 2>/dev/null)" ]; then
-            git add 8gcr-ee/.rr-cache/
-          fi
-          git commit -sm "fix(patches): rebase patches on updated main"
-          git push --force-with-lease origin main
-
-      # ── Phase 2c: Issue Creation ──
-
-      - name: Create issue for failed rebase
-        if: steps.apply.outputs.result == 'failed' && steps.rebase.outputs.result == 'failed'
-        run: |
-          main_sha=$(git rev-parse main)
           run_url="${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}"
 
-          body="Patch rebase failed and requires manual resolution.
+          body="Sync or patch verification failed.
 
-          **Failed patch:** \`${FAILED_PATCH}\`
-          **Main HEAD:** \`${main_sha}\`
           **Workflow run:** ${run_url}
 
-          **Conflicting files:**
-          \`\`\`
-          ${CONFLICTS}
-          \`\`\`
+          Check the [workflow logs](${run_url}) for details."
 
-          **Manual resolution:**
-          \`\`\`bash
-          git worktree add ../harbor.wip-patches -b wip/fix-patches main
-          cd ../harbor.wip-patches
-          stg init
-          stg import -S 8gcr-ee/patches/series
-          # resolve conflicts in ${FAILED_PATCH}
-          git add <resolved-files>
-          stg refresh
-          stg push -a
-          stg export -d ../harbor.main/8gcr-ee/patches/
-          cd ../harbor.main
-          git add 8gcr-ee/patches/
-          git commit -sm 'fix(patches): resolve conflict in ${FAILED_PATCH}'
-          git push origin main
-          \`\`\`"
-
-          existing=$(gh issue list --label patches --state open --json number --jq '.[0].number // empty')
+          existing=$(gh issue list --label sync --state open --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
           else
             gh issue create \
-              --title "Patch rebase failed: ${FAILED_PATCH}" \
-              --label patches \
+              --title "Sync failed: harbor-next/main into main" \
+              --label sync \
               --body "$body"
           fi
           exit 1
@@ -291,5 +78,3 @@ jobs:
           SERVER_URL: ${{ github.server_url }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          FAILED_PATCH: ${{ steps.rebase.outputs.failed_patch }}
-          CONFLICTS: ${{ steps.rebase.outputs.conflicts }}
