@@ -51,6 +51,12 @@ tasks:
           echo "Restored rerere cache"
         fi
 
+        # Save pre-merge state of .github/workflows/ so we can restore it.
+        # GITHUB_TOKEN cannot push workflow file changes (needs 'workflows'
+        # scope which only PATs have), so upstream workflow changes must be
+        # excluded from the merge result.
+        pre_merge_sha=$(git rev-parse HEAD)
+
         if ! git merge {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}} --no-edit; then
           echo "ERROR: Merge conflict with {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}}"
           echo ""
@@ -59,6 +65,19 @@ tasks:
           echo ""
           echo "Resolve manually, then run: task sync:push"
           exit 1
+        fi
+
+        # Restore .github/workflows/ to pre-merge state.
+        # Use git diff --diff-filter to find added/modified/deleted files.
+        if ! git diff --quiet "$pre_merge_sha" HEAD -- .github/workflows/ 2>/dev/null; then
+          echo "Reverting upstream workflow changes (GITHUB_TOKEN limitation)"
+          # Restore files that existed before merge (modified or deleted by upstream)
+          git checkout "$pre_merge_sha" -- .github/workflows/ 2>/dev/null || true
+          # Remove files added by upstream that didn't exist before
+          git diff --name-only --diff-filter=A "$pre_merge_sha" HEAD -- .github/workflows/ | while read -r f; do
+            git rm -f "$f" 2>/dev/null || true
+          done
+          git commit --amend --no-edit
         fi
         echo "Merge complete"
 
@@ -86,8 +105,9 @@ tasks:
         main_sha=$(git rev-parse HEAD)
 
         echo "=== Phase 1: Try direct patch apply ==="
+        git branch -D wip/verify-patches 2>/dev/null || true
         git checkout -b wip/verify-patches HEAD
-        stg init
+        stg init 2>/dev/null || true
 
         if stg import -3 -S {{.PATCHES_DIR}}/series; then
           echo "All patches applied cleanly"
@@ -124,8 +144,9 @@ tasks:
         # Copy patches before checkout (directory may not exist at base commit)
         cp -r {{.PATCHES_DIR}} /tmp/patches-for-rebase
 
+        git branch -D wip/rebase-patches 2>/dev/null || true
         git checkout -b wip/rebase-patches "$base_sha"
-        stg init
+        stg init 2>/dev/null || true
         stg import -3 -S /tmp/patches-for-rebase/series
 
         if ! stg rebase "$main_branch"; then

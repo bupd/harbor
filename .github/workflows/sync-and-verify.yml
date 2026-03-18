@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 # Note: GITHUB_TOKEN cannot push workflow file changes. Upstream workflows
-# are excluded from merge via .gitattributes (merge=ours).
+# are reverted after merge in the sync task (taskfile/sync.yml).
 permissions:
   contents: write
   issues: write
