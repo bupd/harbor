@@ -53,6 +53,32 @@ jobs:
         run: task sync:sync-and-verify
         continue-on-error: true
 
+      - name: Install GitHub CLI
+        if: steps.sync.outcome == 'failure'
+        run: |
+          case "$(uname -m)" in
+            x86_64|amd64) arch="amd64" ;;
+            aarch64|arm64) arch="arm64" ;;
+            *)
+              echo "Unsupported architecture: $(uname -m)"
+              exit 1
+              ;;
+          esac
+
+          gh_version="$(python3 - <<'PY'
+import json
+import urllib.request
+
+with urllib.request.urlopen("https://api.github.com/repos/cli/cli/releases/latest") as response:
+    print(json.load(response)["tag_name"].removeprefix("v"))
+PY
+          )"
+
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${gh_version}/gh_${gh_version}_linux_${arch}.deb" -o /tmp/gh.deb
+          sudo dpkg -i /tmp/gh.deb
+          rm /tmp/gh.deb
+          gh --version
+
       - name: Create issue on failure
         if: steps.sync.outcome == 'failure'
         run: |

@@ -58,13 +58,35 @@ tasks:
         pre_merge_sha=$(git rev-parse HEAD)
 
         if ! git merge {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}} --no-edit; then
-          echo "ERROR: Merge conflict with {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}}"
-          echo ""
-          echo "Conflicting files:"
-          git diff --name-only --diff-filter=U
-          echo ""
-          echo "Resolve manually, then run: task sync:push"
-          exit 1
+          conflicts=$(git diff --name-only --diff-filter=U)
+          if [ -n "$conflicts" ] && ! printf '%s\n' "$conflicts" | grep -qv '^.github/workflows/'; then
+            echo "Auto-resolving workflow-only conflicts (GITHUB_TOKEN limitation)"
+            printf '%s\n' "$conflicts" | while IFS= read -r f; do
+              [ -n "$f" ] || continue
+              if git cat-file -e "${pre_merge_sha}:${f}" 2>/dev/null; then
+                git checkout --ours -- "$f"
+                git add "$f"
+              else
+                git rm -f -- "$f"
+              fi
+            done
+
+            if git diff --name-only --diff-filter=U | grep -q .; then
+              echo "ERROR: Workflow conflict auto-resolution left unresolved files"
+              git diff --name-only --diff-filter=U
+              exit 1
+            fi
+
+            git commit --no-edit
+          else
+            echo "ERROR: Merge conflict with {{.UPSTREAM_REMOTE}}/{{.UPSTREAM_BRANCH}}"
+            echo ""
+            echo "Conflicting files:"
+            printf '%s\n' "$conflicts"
+            echo ""
+            echo "Resolve manually, then run: task sync:push"
+            exit 1
+          fi
         fi
 
         # Restore .github/workflows/ to pre-merge state.
