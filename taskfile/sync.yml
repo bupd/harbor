@@ -45,9 +45,10 @@ tasks:
         git config merge.ours.driver true
         git config rerere.enabled true
         git config rerere.autoUpdate true
+        rr_cache_dir="$(git rev-parse --git-path rr-cache)"
         if [ -d "{{.RERERE_DIR}}" ]; then
-          mkdir -p .git/rr-cache
-          cp -r {{.RERERE_DIR}}/* .git/rr-cache/ 2>/dev/null || true
+          mkdir -p "$rr_cache_dir"
+          cp -r {{.RERERE_DIR}}/* "$rr_cache_dir"/ 2>/dev/null || true
           echo "Restored rerere cache"
         fi
 
@@ -118,23 +119,36 @@ tasks:
         # Enable rerere
         git config rerere.enabled true
         git config rerere.autoUpdate true
+        rr_cache_dir="$(git rev-parse --git-path rr-cache)"
         if [ -d "{{.RERERE_DIR}}" ]; then
-          mkdir -p .git/rr-cache
-          cp -r {{.RERERE_DIR}}/* .git/rr-cache/ 2>/dev/null || true
+          mkdir -p "$rr_cache_dir"
+          cp -r {{.RERERE_DIR}}/* "$rr_cache_dir"/ 2>/dev/null || true
         fi
 
         main_branch=$(git rev-parse --abbrev-ref HEAD)
         main_sha=$(git rev-parse HEAD)
+        short_sha=$(printf '%s' "$main_sha" | cut -c1-12)
+        verify_branch="wip/verify-patches-${short_sha}-$$"
+        rebase_branch="wip/rebase-patches-${short_sha}-$$"
+        patches_tmpdir="$(mktemp -d)"
+        readme_backup=""
+
+        cleanup_branch() {
+          branch="$1"
+          git checkout "$main_branch" >/dev/null 2>&1 || true
+          stg branch --cleanup --force "$branch" >/dev/null 2>&1 || true
+          git branch -D "$branch" >/dev/null 2>&1 || true
+        }
 
         echo "=== Phase 1: Try direct patch apply ==="
-        git branch -D wip/verify-patches 2>/dev/null || true
-        git checkout -b wip/verify-patches HEAD
+        cleanup_branch "$verify_branch"
+        git checkout -b "$verify_branch" HEAD
         stg init 2>/dev/null || true
 
         if stg import -3 -S {{.PATCHES_DIR}}/series; then
           echo "All patches applied cleanly"
-          git checkout "$main_branch"
-          git branch -D wip/verify-patches
+          cleanup_branch "$verify_branch"
+          rm -rf "$patches_tmpdir"
           exit 0
         fi
 
@@ -143,13 +157,13 @@ tasks:
         # Clean up failed apply
         stg repair 2>/dev/null || true
         git reset --hard HEAD
-        git checkout "$main_branch"
-        git branch -D wip/verify-patches 2>/dev/null || true
+        cleanup_branch "$verify_branch"
 
         echo "=== Phase 2: Rebase fallback ==="
         base_sha=$(head -1 {{.PATCHES_DIR}}/series | sed -n 's/^# This series applies on Git commit //p')
         if [ -z "$base_sha" ]; then
           echo "ERROR: Could not parse base commit from series file"
+          rm -rf "$patches_tmpdir"
           exit 1
         fi
         echo "Base commit: $base_sha"
@@ -159,17 +173,18 @@ tasks:
           git fetch {{.UPSTREAM_REMOTE}} "$base_sha" || true
           if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
             echo "ERROR: Base commit $base_sha not reachable"
+            rm -rf "$patches_tmpdir"
             exit 1
           fi
         fi
 
         # Copy patches before checkout (directory may not exist at base commit)
-        cp -r {{.PATCHES_DIR}} /tmp/patches-for-rebase
+        cp -r {{.PATCHES_DIR}} "$patches_tmpdir/patches"
 
-        git branch -D wip/rebase-patches 2>/dev/null || true
-        git checkout -b wip/rebase-patches "$base_sha"
+        cleanup_branch "$rebase_branch"
+        git checkout -b "$rebase_branch" "$base_sha"
         stg init 2>/dev/null || true
-        stg import -3 -S /tmp/patches-for-rebase/series
+        stg import -3 -S "$patches_tmpdir/patches/series"
 
         if ! stg rebase "$main_branch"; then
           failed_patch=$(stg top 2>/dev/null || echo "unknown")
@@ -182,9 +197,8 @@ tasks:
           echo "  stg refresh"
           echo "  stg push -a"
           echo "  stg export -d {{.PATCHES_DIR}}/"
-          git checkout "$main_branch" 2>/dev/null || true
-          git branch -D wip/rebase-patches 2>/dev/null || true
-          rm -rf /tmp/patches-for-rebase
+          cleanup_branch "$rebase_branch"
+          rm -rf "$patches_tmpdir"
           exit 1
         fi
 
@@ -193,14 +207,15 @@ tasks:
         # Preserve README
         readme_path="{{.PATCHES_DIR}}/README.md"
         if [ -f "$readme_path" ]; then
-          cp "$readme_path" /tmp/patches-readme.md
+          readme_backup="$(mktemp)"
+          cp "$readme_path" "$readme_backup"
         fi
 
         stg export -d {{.PATCHES_DIR}}/
 
         # Restore README
-        if [ -f /tmp/patches-readme.md ]; then
-          cp /tmp/patches-readme.md "$readme_path"
+        if [ -n "$readme_backup" ] && [ -f "$readme_backup" ]; then
+          cp "$readme_backup" "$readme_path"
         fi
 
         # Update base commit in series file
@@ -210,8 +225,9 @@ tasks:
         git checkout "$main_branch"
         git add {{.PATCHES_DIR}}/
         git commit -sm "fix(patches): rebase patches on updated main"
-        git branch -D wip/rebase-patches 2>/dev/null || true
-        rm -rf /tmp/patches-for-rebase
+        cleanup_branch "$rebase_branch"
+        rm -rf "$patches_tmpdir"
+        rm -f "$readme_backup"
 
         echo "Patches rebased and committed"
 
@@ -219,9 +235,10 @@ tasks:
     desc: "Save git rerere cache to repo (if any resolutions recorded)"
     cmds:
       - |
-        if [ -d .git/rr-cache ] && [ "$(ls -A .git/rr-cache 2>/dev/null)" ]; then
+        rr_cache_dir="$(git rev-parse --git-path rr-cache)"
+        if [ -d "$rr_cache_dir" ] && [ "$(ls -A "$rr_cache_dir" 2>/dev/null)" ]; then
           mkdir -p {{.RERERE_DIR}}
-          cp -r .git/rr-cache/* {{.RERERE_DIR}}/
+          cp -r "$rr_cache_dir"/* {{.RERERE_DIR}}/
           git add {{.RERERE_DIR}}/
           git diff --cached --quiet {{.RERERE_DIR}}/ 2>/dev/null || \
             git commit -sm "chore: update git rerere cache"

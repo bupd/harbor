@@ -55,7 +55,14 @@ jobs:
 
       - name: Install GitHub CLI
         if: steps.sync.outcome == 'failure'
+        env:
+          GH_VERSION: "2.88.1"
         run: |
+          if command -v gh >/dev/null 2>&1; then
+            gh --version
+            exit 0
+          fi
+
           case "$(uname -m)" in
             x86_64|amd64) arch="amd64" ;;
             aarch64|arm64) arch="arm64" ;;
@@ -65,16 +72,7 @@ jobs:
               ;;
           esac
 
-          gh_version="$(python3 - <<'PY'
-import json
-import urllib.request
-
-with urllib.request.urlopen("https://api.github.com/repos/cli/cli/releases/latest") as response:
-    print(json.load(response)["tag_name"].removeprefix("v"))
-PY
-          )"
-
-          curl -fsSL "https://github.com/cli/cli/releases/download/v${gh_version}/gh_${gh_version}_linux_${arch}.deb" -o /tmp/gh.deb
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${arch}.deb" -o /tmp/gh.deb
           sudo dpkg -i /tmp/gh.deb
           rm /tmp/gh.deb
           gh --version
