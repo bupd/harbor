@@ -1,8 +1,10 @@
 name: Sync and Verify Patches
 
 on:
+  repository_dispatch:
+    types: [upstream-sync]
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "0 6 * * *" # daily fallback for missed dispatches
   workflow_dispatch:
 
 # Note: GITHUB_TOKEN cannot push workflow file changes. Upstream workflows
