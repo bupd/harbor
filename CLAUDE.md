@@ -980,6 +980,7 @@ Version bump rules:
 | `dependency-review.yml` | PRs to main | Block high-severity CVEs |
 | `spellcheck.yml` | PRs + main | Typos in docs/configs |
 | `scorecard.yml` | Weekly + main | OpenSSF security score |
+| `sync-and-verify.yml` | `repository_dispatch` (upstream-sync) + daily cron + manual | Sync harbor-next/main, verify patches |
 | `welcome.yml` | First issue/PR | Welcome new contributors |
 
 ## 17. Local Git Hooks (lefthook)
