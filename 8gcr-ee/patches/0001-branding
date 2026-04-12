@@ -1261,7 +1261,7 @@ index fd630eec0..3f97f4f24 100644
      }
  }
 diff --git a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
-index 7823337e3..bc2cc9c54 100644
+index 0e8a48b73..1a3440d5f 100644
 --- a/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
 +++ b/src/portal/src/app/shared/components/about-dialog/about-dialog.component.html
 @@ -5,11 +5,7 @@

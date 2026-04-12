@@ -57,8 +57,13 @@ jobs:
           # - pkg/scan/dao/scan, pkg/scan/postprocessors: foreign key constraint violations in CI
           # - pkg/systemartifact: test ordering / state issues
           # - jobservice/logger/getter: DB state ordering issues when packages run in parallel
+          # - jobservice/job/impl/gc: TestDelKeys hardcodes redis://127.0.0.1:6379
+          # - core/session: SessionInit hardcodes redis://127.0.0.1:6379/0
+          # - lib/cache/redis: test suite assumes Redis on localhost
+          # - server/middleware/blob: needs DB + Redis for middleware setup
+          # - pkg/accessory/model/attestation: imports src/testing which has //go:build db
           pkgs=$(go list ./... | grep -vE \
-            '/controller/ldap$|/core/auth/ldap$|/pkg/ldap$|/core/api$|/core/controllers$|/pkg/proxy/connection$|/pkg/token$|/server/middleware/security$|/controller/systeminfo$|/pkg/jobmonitor$|/common/utils/email$|/jobservice/runner$|/jobservice/logger/getter$|/controller/usergroup/test$|/pkg/scan/dao/scanner$|/pkg/scan/export$|/pkg/scan/dao/scan$|/pkg/scan/postprocessors$|/pkg/systemartifact$' \
+            '/controller/ldap$|/core/auth/ldap$|/pkg/ldap$|/core/api$|/core/controllers$|/pkg/proxy/connection$|/pkg/token$|/server/middleware/security$|/server/middleware/blob$|/controller/systeminfo$|/pkg/jobmonitor$|/common/utils/email$|/jobservice/runner$|/jobservice/logger/getter$|/jobservice/job/impl/gc$|/core/session$|/lib/cache/redis$|/controller/usergroup/test$|/pkg/scan/dao/scanner$|/pkg/scan/export$|/pkg/scan/dao/scan$|/pkg/scan/postprocessors$|/pkg/systemartifact$|/pkg/accessory/model/attestation$' \
             | tr '\n' ' ')
           # Run packages serially because many DAO suites share the same test database.
           # shellcheck disable=SC2086
