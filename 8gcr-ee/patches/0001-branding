@@ -27,9 +27,8 @@ From: bupd <bupdprasanth@gmail.com>
  .../components/navigator/navigator.component.html  |    8 -
  .../components/navigator/navigator.component.ts    |   20 +
  src/portal/src/i18n/lang/en-us-lang.json           |   14 +
- src/portal/src/images/container-registry-logo.svg  |    7 -
  src/server/v2.0/handler/systeminfo.go              |   18 +
- 25 files changed, 1007 insertions(+), 92 deletions(-)
+ 24 files changed, 1007 insertions(+), 85 deletions(-)
  create mode 100644 make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
  create mode 100644 src/pkg/branding/dao/dao.go
  create mode 100644 src/pkg/branding/manager.go
@@ -38,7 +37,6 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
- delete mode 100644 src/portal/src/images/container-registry-logo.svg
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
 index 1b04ec22a..7eefb341f 100644
@@ -1184,7 +1182,7 @@ index b8635a2df..2a9acabcc 100644
  })
  export class ConfigurationModule {}
 diff --git a/src/portal/src/app/services/skinable-config.service.ts b/src/portal/src/app/services/skinable-config.service.ts
-index fd630eec0..3f97f4f24 100644
+index 62c248d9d..79033b146 100644
 --- a/src/portal/src/app/services/skinable-config.service.ts
 +++ b/src/portal/src/app/services/skinable-config.service.ts
 @@ -13,16 +13,20 @@
@@ -1365,7 +1363,7 @@ index 049dce8d3..94a07ae9b 100644
          this.searchSub = this.searchTerms
              .pipe(debounceTime(deBounceTime))
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.html b/src/portal/src/app/shared/components/navigator/navigator.component.html
-index 5f4e3a252..b218ddbb1 100644
+index d7c0a76a6..889dd96d0 100644
 --- a/src/portal/src/app/shared/components/navigator/navigator.component.html
 +++ b/src/portal/src/app/shared/components/navigator/navigator.component.html
 @@ -2,15 +2,15 @@
@@ -1389,7 +1387,7 @@ index 5f4e3a252..b218ddbb1 100644
              }}</span>
          </a>
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.ts b/src/portal/src/app/shared/components/navigator/navigator.component.ts
-index 2f665a9f6..34e4610f4 100644
+index 172b96bbf..4704f1a01 100644
 --- a/src/portal/src/app/shared/components/navigator/navigator.component.ts
 +++ b/src/portal/src/app/shared/components/navigator/navigator.component.ts
 @@ -46,6 +46,8 @@ import { map } from 'rxjs/operators';
@@ -1425,7 +1423,7 @@ index 2f665a9f6..34e4610f4 100644
          this.selectedLang = this.translate.currentLang as SupportedLanguage;
          if (this.selectedLang) {
              registerLocaleData(
-@@ -286,15 +292,15 @@ export class NavigatorComponent implements OnInit {
+@@ -309,15 +315,15 @@ export class NavigatorComponent implements OnInit {
  
      getBgColor(): string {
          if (
@@ -1446,10 +1444,10 @@ index 2f665a9f6..34e4610f4 100644
          }
          return null;
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index df5a4bf2b..fea4f7bd9 100644
+index c9ac1de9e..4f4f572eb 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
-@@ -773,6 +773,7 @@
+@@ -774,6 +774,7 @@
          "REPOSITORY": "Repository",
          "REPO_READ_ONLY": "Repository Read Only",
          "SYSTEM": "System Settings",
@@ -1457,7 +1455,7 @@ index df5a4bf2b..fea4f7bd9 100644
          "PROJECT_QUOTAS": "Project Quotas",
          "VULNERABILITY": "Vulnerability",
          "GC": "Garbage Collection",
-@@ -1897,6 +1898,19 @@
+@@ -1898,6 +1899,19 @@
          "DATE_PICKER_SELECT_YEAR_TEXT": "Select year, the current year is {CALENDAR_YEAR}",
          "DATE_PICKER_SELECTED_LABEL": "{FULL_DATE} - Selected"
      },
@@ -1477,19 +1475,6 @@ index df5a4bf2b..fea4f7bd9 100644
      "BANNER_MESSAGE": {
          "BANNER_MESSAGE": "Banner Message",
          "MESSAGE_TYPE": "Message type",
-diff --git a/src/portal/src/images/container-registry-logo.svg b/src/portal/src/images/container-registry-logo.svg
-deleted file mode 100644
-index fee4f28c3..000000000
---- a/src/portal/src/images/container-registry-logo.svg
-+++ /dev/null
-@@ -1,7 +0,0 @@
--<svg xmlns="http://www.w3.org/2000/svg" width="793.7" height="1122.52" viewBox="0 0 210 297">
--  <g fill="#d03808">
--    <path d="M93.71 155.34l-.06 1.5-10.9 6.3-1.27-2.17 10.9-6.3zM45.88 181.45l1.24 2.18 11.55-6.65-1.25-2.17zM64.02 171.1l1.27 2.18 10.87-6.31-1.24-2.18zM127.25 163.15l1.27-2.18-10.9-6.3-1.32.67.05 1.5zM151.34 176.98l1.24-2.17 11.55 6.64-1.25 2.18zM133.82 166.97l1.27-2.18 10.9 6.3-1.28 2.19z" class="st0"/>
--    <path d="M106.1 115.08h-2.51V102.5h2.52zM104.86 135.73l-1.27-.5v-12.6h2.52v12.6zM103.59 81.61h2.52v13.33h-2.52z" class="st1"/>
--  </g>
--  <path fill="#fff" d="M107.79 70.71l63.2 36.47 2.13 1.22.68.4v79.35l-.68.4-2.13 1.21-31.61 18.25-26.78 15.48-2.04 1.16v-12.87l.68-.4 22.53-13.01 22.56-13.02 6.26-3.6v-60.08l-52.03 30.01v72.97l-.68.4-2.12 1.21-2.12 1.22-.68.4-.68-.4-2.12-1.22-2.13-1.22-.68-.4v-72.96l-51.99-30.04v60.15l4.05 2.32 35.24 20.37 12.03 6.93.68.4v12.84l-2.04-1.16L70.54 208l-31.56-18.25-2.12-1.21-.65-.4v-79.33l.68-.4 2.12-1.21c21.06-12.17 42.15-24.33 63.2-36.47l2.13-1.22.68-.4.68.4zm-54.88 41.3L105 142.07l52.08-30.04-47.72-27.53-4.36-2.55-8.6 4.98-.6.34c-14.3 8.24-28.59 16.5-42.88 24.76z" class="st0" style="fill:#ffffff;fill-opacity:1"/>
--</svg>
 diff --git a/src/server/v2.0/handler/systeminfo.go b/src/server/v2.0/handler/systeminfo.go
 index 6c673e08c..35c8a41fc 100644
 --- a/src/server/v2.0/handler/systeminfo.go
