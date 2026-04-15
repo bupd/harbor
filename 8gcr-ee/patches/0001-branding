@@ -4,45 +4,43 @@ From: bupd <bupdprasanth@gmail.com>
 
 
 ---
- api/v2.0/swagger.yaml                              |  110 ++++++++
+ api/v2.0/swagger.yaml                              |  113 ++++++++
  .../postgresql/0171_8gears_2.14_branding.up.sql    |    5 
  src/controller/systeminfo/controller.go            |  271 ++++++++++++++++++++
- src/pkg/branding/dao/dao.go                        |   79 ++++++
+ src/pkg/branding/dao/dao.go                        |   78 ++++++
  src/pkg/branding/manager.go                        |   59 ++++
  src/pkg/branding/models/branding.go                |   56 ++++
  .../src/app/account/sign-in/sign-in.component.html |    2 
- .../src/app/account/sign-in/sign-in.component.ts   |   22 +-
- src/portal/src/app/app.component.ts                |   27 +-
+ .../src/app/account/sign-in/sign-in.component.ts   |   21 +-
+ src/portal/src/app/app.component.ts                |   26 +-
  src/portal/src/app/app.module.ts                   |    4 
  .../config/branding/branding.component.html        |   75 ++++++
  .../config/branding/branding.component.scss        |    0 
- .../config/branding/branding.component.spec.ts     |   13 +
  .../config/branding/branding.component.ts          |  180 +++++++++++++
  .../left-side-nav/config/config.component.html     |   10 +
- .../app/base/left-side-nav/config/config.module.ts |    9 +
+ .../app/base/left-side-nav/config/config.module.ts |    6 
  .../src/app/services/skinable-config.service.ts    |   46 +++
  .../about-dialog/about-dialog.component.html       |    6 
  .../about-dialog/about-dialog.component.ts         |   17 +
- .../global-search/global-search.component.ts       |   41 +--
+ .../global-search/global-search.component.ts       |   40 +--
  .../components/navigator/navigator.component.html  |    8 -
- .../components/navigator/navigator.component.ts    |   20 +
+ .../components/navigator/navigator.component.ts    |   19 +
  src/portal/src/i18n/lang/en-us-lang.json           |   14 +
  src/server/v2.0/handler/systeminfo.go              |   18 +
- 24 files changed, 1007 insertions(+), 85 deletions(-)
+ 23 files changed, 990 insertions(+), 84 deletions(-)
  create mode 100644 make/migrations/postgresql/0171_8gears_2.14_branding.up.sql
  create mode 100644 src/pkg/branding/dao/dao.go
  create mode 100644 src/pkg/branding/manager.go
  create mode 100644 src/pkg/branding/models/branding.go
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.html
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss
- create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index 1b04ec22a..7eefb341f 100644
+index 1b04ec22a..ce58d9de1 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
-@@ -4106,6 +4106,59 @@ paths:
+@@ -4106,6 +4106,62 @@ paths:
              $ref: '#/definitions/GeneralInfo'
          '500':
            $ref: '#/responses/500'
@@ -56,6 +54,8 @@ index 1b04ec22a..7eefb341f 100644
 +        This endpoint is public and accessible without authentication.
 +      tags:
 +        - systeminfo
++      parameters:
++        - $ref: '#/parameters/requestId'
 +      responses:
 +        '200':
 +          description: Branding configuration retrieved successfully.
@@ -79,6 +79,7 @@ index 1b04ec22a..7eefb341f 100644
 +      tags:
 +        - systeminfo
 +      parameters:
++        - $ref: '#/parameters/requestId'
 +        - in: body
 +          name: brandingConfig
 +          required: true
@@ -102,7 +103,7 @@ index 1b04ec22a..7eefb341f 100644
    /systeminfo/volumes:
      get:
        summary: Get system volume info (total/free size).
-@@ -8071,6 +8124,63 @@ definitions:
+@@ -8071,6 +8127,63 @@ definitions:
          x-nullable: true
          x-omitempty: true
          description: The OIDC provider name, empty if current auth is not OIDC_auth or OIDC provider is not configured.
@@ -178,7 +179,7 @@ index 000000000..f8e246635
 +    update_time  TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 +);
 diff --git a/src/controller/systeminfo/controller.go b/src/controller/systeminfo/controller.go
-index e3d40b303..7132fb414 100644
+index e3d40b303..83f1c7c01 100644
 --- a/src/controller/systeminfo/controller.go
 +++ b/src/controller/systeminfo/controller.go
 @@ -16,10 +16,13 @@ package systeminfo
@@ -292,7 +293,7 @@ index e3d40b303..7132fb414 100644
 +	if len(incoming.LoginTitle) > 0 {
 +		config.LoginTitle = incoming.LoginTitle
 +	}
-+	if len(incoming.Product.Name) > 0 {
++	if incoming.Product != nil && len(incoming.Product.Name) > 0 {
 +		config.Product = incoming.Product
 +	}
 +
@@ -503,17 +504,16 @@ index e3d40b303..7132fb414 100644
  }
 diff --git a/src/pkg/branding/dao/dao.go b/src/pkg/branding/dao/dao.go
 new file mode 100644
-index 000000000..ebb44de08
+index 000000000..2210f1408
 --- /dev/null
 +++ b/src/pkg/branding/dao/dao.go
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,78 @@
 +package dao
 +
 +import (
 +	"context"
 +	"time"
 +
-+	"github.com/goharbor/harbor/src/lib/log"
 +	"github.com/goharbor/harbor/src/lib/orm"
 +	model "github.com/goharbor/harbor/src/pkg/branding/models"
 +)
@@ -542,22 +542,20 @@ index 000000000..ebb44de08
 +	if err != nil {
 +		return nil, err
 +	}
-+	b := model.Branding{ID: 1}
-+	err = ormer.Read(&b)
-+	if err == orm.ErrNoRows {
-+		b = model.Branding{
-+			ID:         1,
-+			Config:     DefaultBrandingJSON,
-+			UpdateTime: time.Now(),
-+		}
-+		_, err = ormer.Insert(&b)
-+		if err != nil {
-+			return nil, err
-+		}
-+		log.Infof("seeded default branding config")
-+		return &b, nil
-+	}
++
++	// Atomic upsert: seed defaults if no row exists, otherwise do nothing.
++	_, err = ormer.Raw(
++		`INSERT INTO branding (id, config, update_time)
++		 VALUES (1, ?, NOW())
++		 ON CONFLICT (id) DO NOTHING`,
++		DefaultBrandingJSON,
++	).Exec()
 +	if err != nil {
++		return nil, err
++	}
++
++	b := model.Branding{ID: 1}
++	if err = ormer.Read(&b); err != nil {
 +		return nil, err
 +	}
 +	return &b, nil
@@ -580,6 +578,8 @@ index 000000000..ebb44de08
 +
 +	if err == orm.ErrNoRows {
 +		_, err = ormer.Insert(branding)
++	} else if err != nil {
++		return err
 +	} else {
 +		_, err = ormer.Update(branding, "Config", "UpdateTime")
 +	}
@@ -588,7 +588,7 @@ index 000000000..ebb44de08
 +}
 diff --git a/src/pkg/branding/manager.go b/src/pkg/branding/manager.go
 new file mode 100644
-index 000000000..27e048290
+index 000000000..2434d10ce
 --- /dev/null
 +++ b/src/pkg/branding/manager.go
 @@ -0,0 +1,59 @@
@@ -616,7 +616,7 @@ index 000000000..27e048290
 +)
 +
 +var (
-+	// Mgr is a global variable for the default robot account manager implementation
++	// Mgr is a global variable for the default branding manager implementation
 +	Mgr = NewManager()
 +)
 +
@@ -625,7 +625,7 @@ index 000000000..27e048290
 +	// Get ...
 +	Get(ctx context.Context) (*model.Branding, error)
 +
-+	// Count returns the total count of robots according to the query
++	// Update updates the branding configuration
 +	Update(ctx context.Context, params string) (err error)
 +}
 +
@@ -635,7 +635,7 @@ index 000000000..27e048290
 +	dao dao.DAO
 +}
 +
-+// NewManager return a new instance of defaultRobotManager
++// NewManager returns a new instance of the default branding manager
 +func NewManager() Manager {
 +	return &manager{
 +		dao: dao.New(),
@@ -653,7 +653,7 @@ index 000000000..27e048290
 +}
 diff --git a/src/pkg/branding/models/branding.go b/src/pkg/branding/models/branding.go
 new file mode 100644
-index 000000000..f21481801
+index 000000000..9d3a190b0
 --- /dev/null
 +++ b/src/pkg/branding/models/branding.go
 @@ -0,0 +1,56 @@
@@ -685,9 +685,9 @@ index 000000000..f21481801
 +	orm.RegisterModel(&Branding{})
 +}
 +
-+// Robot holds the details of a robot.
++// Branding holds the branding configuration.
 +type Branding struct {
-+	ID         int64     `orm:"pk;auto;column(id)" json:"id"`
++	ID         int64     `orm:"pk;column(id)" json:"id"`
 +	Config     string    `orm:"type(text);column(config)" json:"config"`
 +	UpdateTime time.Time `orm:"column(update_time);auto_now" json:"update_time"`
 +}
@@ -714,7 +714,7 @@ index 000000000..f21481801
 +	return string(b.Config), nil
 +}
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.html b/src/portal/src/app/account/sign-in/sign-in.component.html
-index 5108d4316..8f5acbb70 100644
+index 5108d4316..e86a430ce 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.html
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.html
 @@ -6,7 +6,7 @@
@@ -722,23 +722,15 @@ index 5108d4316..8f5acbb70 100644
          [ngStyle]="{
              'background-image': customLoginBgImg
 -                ? 'url(/images/' + customLoginBgImg + ')'
-+                ? 'url(' + customLoginBgImg + ')'
++                ? 'url(\'' + customLoginBgImg + '\')'
                  : ''
          }">
          <form #signInForm="ngForm" class="login">
 diff --git a/src/portal/src/app/account/sign-in/sign-in.component.ts b/src/portal/src/app/account/sign-in/sign-in.component.ts
-index ce76aa155..b13a8a7a0 100644
+index ce76aa155..fded2fdb3 100644
 --- a/src/portal/src/app/account/sign-in/sign-in.component.ts
 +++ b/src/portal/src/app/account/sign-in/sign-in.component.ts
-@@ -38,6 +38,7 @@ import {
- import { SignInCredential } from './sign-in-credential';
- import { UserPermissionService } from '../../shared/services';
- import { finalize } from 'rxjs/operators';
-+import { SysteminfoService } from 'ng-swagger-gen/services';
- 
- // Define status flags for signing in states
- export const signInStatusNormal = 0;
-@@ -89,16 +90,17 @@ export class SignInComponent implements AfterViewChecked, OnInit {
+@@ -89,16 +89,17 @@ export class SignInComponent implements AfterViewChecked, OnInit {
      ) {}
  
      ngOnInit(): void {
@@ -767,18 +759,10 @@ index ce76aa155..b13a8a7a0 100644
              this.redirectUrl = params['redirect_url'] || '';
              let isSignUp = params['sign_up'] || '';
 diff --git a/src/portal/src/app/app.component.ts b/src/portal/src/app/app.component.ts
-index 07c3ce543..105b2bf08 100644
+index 07c3ce543..ed512b167 100644
 --- a/src/portal/src/app/app.component.ts
 +++ b/src/portal/src/app/app.component.ts
-@@ -36,6 +36,7 @@ import {
-     JobServiceDashboardHealthCheckService,
- } from './base/left-side-nav/job-service-dashboard/job-service-dashboard-health-check.service';
- import { SessionService } from './shared/services/session.service';
-+import { SysteminfoService } from 'ng-swagger-gen/services';
- 
- @Component({
-     selector: 'harbor-app',
-@@ -59,18 +60,20 @@ export class AppComponent implements OnInit, OnDestroy {
+@@ -59,18 +59,20 @@ export class AppComponent implements OnInit, OnDestroy {
          // Override page title
          let key: string = 'APP_TITLE.HARBOR';
          translate.get(key).subscribe((res: string) => {
@@ -920,25 +904,6 @@ index 000000000..1acbc8ed5
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.scss
 new file mode 100644
 index 000000000..e69de29bb
-diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
-new file mode 100644
-index 000000000..059161f81
---- /dev/null
-+++ b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.spec.ts
-@@ -0,0 +1,13 @@
-+// Copyright Project Harbor Authors
-+//
-+// Licensed under the Apache License, Version 2.0 (the "License");
-+// you may not use this file except in compliance with the License.
-+// You may obtain a copy of the License at
-+//
-+//    http://www.apache.org/licenses/LICENSE-2.0
-+//
-+// Unless required by applicable law or agreed to in writing, software
-+// distributed under the License is distributed on an "AS IS" BASIS,
-+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+// See the License for the specific language governing permissions and
-+// limitations under the License.
 diff --git a/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts b/src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 new file mode 100644
 index 000000000..de7b13ad0
@@ -1126,7 +1091,7 @@ index 000000000..de7b13ad0
 +    }
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.component.html b/src/portal/src/app/base/left-side-nav/config/config.component.html
-index b25eb825b..007f8562b 100644
+index b25eb825b..3019e95a4 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.component.html
 +++ b/src/portal/src/app/base/left-side-nav/config/config.component.html
 @@ -37,6 +37,16 @@
@@ -1135,7 +1100,7 @@ index b25eb825b..007f8562b 100644
              </li>
 +            <li role="presentation" class="nav-item">
 +                <button
-+                    id="config-system"
++                    id="config-branding"
 +                    class="btn btn-link nav-link"
 +                    type="button"
 +                    routerLink="branding"
@@ -1147,19 +1112,18 @@ index b25eb825b..007f8562b 100644
      </div>
  </div>
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.module.ts b/src/portal/src/app/base/left-side-nav/config/config.module.ts
-index b8635a2df..2a9acabcc 100644
+index b8635a2df..bc4edc95c 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.module.ts
 +++ b/src/portal/src/app/base/left-side-nav/config/config.module.ts
-@@ -20,6 +20,8 @@ import { SystemSettingsComponent } from './system/system-settings.component';
+@@ -20,6 +20,7 @@ import { SystemSettingsComponent } from './system/system-settings.component';
  import { RouterModule, Routes } from '@angular/router';
  import { ConfigService } from './config.service';
  import { SecurityComponent } from './security/security.component';
 +import { BrandingComponent } from './branding/branding.component';
-+import { SysteminfoService } from 'ng-swagger-gen/services';
  
  const routes: Routes = [
      {
-@@ -38,6 +40,10 @@ const routes: Routes = [
+@@ -38,6 +39,10 @@ const routes: Routes = [
                  path: 'setting',
                  component: SystemSettingsComponent,
              },
@@ -1170,17 +1134,14 @@ index b8635a2df..2a9acabcc 100644
              {
                  path: '',
                  redirectTo: 'auth',
-@@ -52,8 +58,9 @@ const routes: Routes = [
+@@ -52,6 +57,7 @@ const routes: Routes = [
          ConfigurationComponent,
          ConfigurationAuthComponent,
          SystemSettingsComponent,
 +        BrandingComponent,
          SecurityComponent,
      ],
--    providers: [ConfigService],
-+    providers: [ConfigService, SysteminfoService],
- })
- export class ConfigurationModule {}
+     providers: [ConfigService],
 diff --git a/src/portal/src/app/services/skinable-config.service.ts b/src/portal/src/app/services/skinable-config.service.ts
 index 62c248d9d..79033b146 100644
 --- a/src/portal/src/app/services/skinable-config.service.ts
@@ -1304,18 +1265,10 @@ index c920c9d7f..9512bc4f0 100644
  
      public get version(): string {
 diff --git a/src/portal/src/app/shared/components/global-search/global-search.component.ts b/src/portal/src/app/shared/components/global-search/global-search.component.ts
-index 049dce8d3..94a07ae9b 100644
+index 049dce8d3..efe022a61 100644
 --- a/src/portal/src/app/shared/components/global-search/global-search.component.ts
 +++ b/src/portal/src/app/shared/components/global-search/global-search.component.ts
-@@ -33,6 +33,7 @@ import { AppConfigService } from '../../../services/app-config.service';
- import { TranslateService } from '@ngx-translate/core';
- import { SkinableConfig } from '../../../services/skinable-config.service';
- import { Location } from '@angular/common';
-+import { SysteminfoService } from 'ng-swagger-gen/services';
- 
- const deBounceTime = 500; // ms
- const SEARCH_KEY: string = 'globalSearch';
-@@ -65,29 +66,23 @@ export class GlobalSearchComponent implements OnInit, OnDestroy {
+@@ -65,29 +65,23 @@ export class GlobalSearchComponent implements OnInit, OnDestroy {
      ) {}
  
      ngOnInit(): void {
@@ -1387,19 +1340,18 @@ index d7c0a76a6..889dd96d0 100644
              }}</span>
          </a>
 diff --git a/src/portal/src/app/shared/components/navigator/navigator.component.ts b/src/portal/src/app/shared/components/navigator/navigator.component.ts
-index 172b96bbf..4704f1a01 100644
+index 172b96bbf..0d0ae3c15 100644
 --- a/src/portal/src/app/shared/components/navigator/navigator.component.ts
 +++ b/src/portal/src/app/shared/components/navigator/navigator.component.ts
-@@ -46,6 +46,8 @@ import { map } from 'rxjs/operators';
+@@ -46,6 +46,7 @@ import { map } from 'rxjs/operators';
  import { forkJoin, Observable } from 'rxjs';
  import { ClrCommonStringsService } from '@clr/angular';
  import { signInStatusError } from '../../../account/sign-in/sign-in.component';
-+import { SysteminfoService } from 'ng-swagger-gen/services';
 +import { BrandingConfig } from 'ng-swagger-gen/models';
  
  @Component({
      selector: 'navigator',
-@@ -61,7 +63,7 @@ export class NavigatorComponent implements OnInit {
+@@ -61,7 +62,7 @@ export class NavigatorComponent implements OnInit {
      selectedLang: SupportedLanguage = DeFaultLang;
      selectedDatetimeRendering: DatetimeRendering = DefaultDatetimeRendering;
      appTitle: string = 'APP_TITLE.HARBOR';
@@ -1408,7 +1360,7 @@ index 172b96bbf..4704f1a01 100644
      isCoreServiceAvailable: boolean = true;
      constructor(
          private session: SessionService,
-@@ -76,8 +78,12 @@ export class NavigatorComponent implements OnInit {
+@@ -76,8 +77,12 @@ export class NavigatorComponent implements OnInit {
      ) {}
  
      ngOnInit(): void {
@@ -1423,7 +1375,7 @@ index 172b96bbf..4704f1a01 100644
          this.selectedLang = this.translate.currentLang as SupportedLanguage;
          if (this.selectedLang) {
              registerLocaleData(
-@@ -309,15 +315,15 @@ export class NavigatorComponent implements OnInit {
+@@ -309,15 +314,15 @@ export class NavigatorComponent implements OnInit {
  
      getBgColor(): string {
          if (
@@ -1476,7 +1428,7 @@ index c9ac1de9e..4f4f572eb 100644
          "BANNER_MESSAGE": "Banner Message",
          "MESSAGE_TYPE": "Message type",
 diff --git a/src/server/v2.0/handler/systeminfo.go b/src/server/v2.0/handler/systeminfo.go
-index 6c673e08c..35c8a41fc 100644
+index 6c673e08c..8c13266e3 100644
 --- a/src/server/v2.0/handler/systeminfo.go
 +++ b/src/server/v2.0/handler/systeminfo.go
 @@ -51,6 +51,24 @@ func (s *sysInfoAPI) GetSystemInfo(ctx context.Context, _ systeminfo.GetSystemIn
@@ -1498,7 +1450,7 @@ index 6c673e08c..35c8a41fc 100644
 +	if err := s.ctl.UpdateBrandingConfig(ctx, params.BrandingConfig); err != nil {
 +		return s.SendError(ctx, err)
 +	}
-+	return systeminfo.NewUpdateBrandingInfoOK()
++	return systeminfo.NewUpdateBrandingInfoOK().WithPayload(params.BrandingConfig)
 +}
 +
  func (s *sysInfoAPI) GetCert(ctx context.Context, _ systeminfo.GetCertParams) middleware.Responder {
