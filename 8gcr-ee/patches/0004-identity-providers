@@ -88,7 +88,7 @@ From: bupd <bupdprasanth@gmail.com>
  src/controller/federatedidp/model.go               |   25 
  src/controller/robot/model.go                      |    1 
  src/controller/systeminfo/controller.go            |    2 
- src/controller/systeminfo/controller_test.go       |   13 
+ src/controller/systeminfo/controller_test.go       |    1 
  src/go.mod                                         |   13 
  src/go.sum                                         |   31 
  src/lib/config/metadata/metadatalist.go            |    1 
@@ -170,7 +170,7 @@ From: bupd <bupdprasanth@gmail.com>
  src/server/v2.0/handler/robot.go                   |  113 +
  src/server/v2.0/handler/robot_test.go              |  134 +
  src/server/v2.0/handler/systeminfo.go              |    1 
- 166 files changed, 21071 insertions(+), 52 deletions(-)
+ 166 files changed, 21059 insertions(+), 52 deletions(-)
  create mode 100644 docs/ADR-federated-idp.md
  create mode 100644 docs/img/fedidp-enterprise-1.png
  create mode 100644 docs/img/fedidp-enterprise-2.png
@@ -287,7 +287,7 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 src/server/v2.0/handler/model/federated_idp.go
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index ce58d9de1..9590d7620 100644
+index 97b87ee39..0040f3363 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
 @@ -3789,6 +3789,352 @@ paths:
@@ -876,7 +876,7 @@ index ce58d9de1..9590d7620 100644
        authproxy_settings:
          description: The setting of auth proxy this is only available when Harbor relies on authproxy for authentication.
          x-nullable: true
-@@ -9284,6 +9828,9 @@ definitions:
+@@ -9292,6 +9836,9 @@ definitions:
        disabled_audit_log_event_types:
          $ref: '#/definitions/StringConfigItem'
          description: The audit log event types to skip to log in database
@@ -886,7 +886,7 @@ index ce58d9de1..9590d7620 100644
    Configurations:
      type: object
      properties:
-@@ -9577,6 +10124,11 @@ definitions:
+@@ -9590,6 +10137,11 @@ definitions:
          description: the list to disable log audit event types.
          x-omitempty: true
          x-isnullable: true
@@ -154085,7 +154085,7 @@ index 000000000..9831fb949
 +CREATE INDEX IF NOT EXISTS idx_identity_providers_jwks_cache
 +ON identity_providers (id, jwks_expires_at, jwks_last_fetch_attempt);
 diff --git a/src/common/const.go b/src/common/const.go
-index bfa171e28..38666379e 100644
+index b07f21f30..c75d6b324 100644
 --- a/src/common/const.go
 +++ b/src/common/const.go
 @@ -229,6 +229,9 @@ const (
@@ -154607,10 +154607,10 @@ index 7b5fae449..47098ebb5 100644
  
  // IsSysLevel, true is a system level robot, others are project level.
 diff --git a/src/controller/systeminfo/controller.go b/src/controller/systeminfo/controller.go
-index 83f1c7c01..8bee45dee 100644
+index d05b0c062..c014fd8cd 100644
 --- a/src/controller/systeminfo/controller.go
 +++ b/src/controller/systeminfo/controller.go
-@@ -69,6 +69,7 @@ type protectedData struct {
+@@ -70,6 +70,7 @@ type protectedData struct {
  	RegistryStorageProviderName string
  	ReadOnly                    bool
  	NotificationEnable          bool
@@ -154618,7 +154618,7 @@ index 83f1c7c01..8bee45dee 100644
  }
  
  // Options provide a set of attributes to control what info should be returned
-@@ -338,6 +339,7 @@ func (c *controller) GetInfo(ctx context.Context, opt Options) (*Data, error) {
+@@ -340,6 +341,7 @@ func (c *controller) GetInfo(ctx context.Context, opt Options) (*Data, error) {
  		ProjectCreationRestrict:     utils.SafeCastString(cfg[common.ProjectCreationRestriction]),
  		RegistryStorageProviderName: utils.SafeCastString(cfg[common.RegistryStorageProviderName]),
  		NotificationEnable:          utils.SafeCastBool(cfg[common.NotificationEnable]),
@@ -154627,29 +154627,10 @@ index 83f1c7c01..8bee45dee 100644
  	return res, nil
  }
 diff --git a/src/controller/systeminfo/controller_test.go b/src/controller/systeminfo/controller_test.go
-index cf3b513ac..eb9309b2d 100644
+index 7a8dcc6fc..b37e3f2e2 100644
 --- a/src/controller/systeminfo/controller_test.go
 +++ b/src/controller/systeminfo/controller_test.go
-@@ -61,6 +61,18 @@ func (s *sysInfoCtlTestSuite) TestGetInfo() {
- 				AuthMode:         "db_auth",
- 				SelfRegistration: true,
- 				BannerMessage:    "{\"closable\":false,\"message\":\"Just for test\",\"type\":\" error\"}",
-+				Protected: &protectedData{
-+					RegistryURL:             "test.goharbor.io",
-+					ExtURL:                  "https://test.goharbor.io",
-+					HarborVersion:           "test-fakeid",
-+					ProjectCreationRestrict: "everyone",
-+					// CI pipeline has it
-+					HasCARoot:                   true,
-+					RegistryStorageProviderName: "filesystem",
-+					ReadOnly:                    false,
-+					NotificationEnable:          false,
-+					EnableProjectFederatedIDP:   false, // Default is false
-+				},
- 			},
- 		},
- 		{
-@@ -79,6 +91,7 @@ func (s *sysInfoCtlTestSuite) TestGetInfo() {
+@@ -82,6 +82,7 @@ func (s *sysInfoCtlTestSuite) TestGetInfo() {
  					RegistryStorageProviderName: "filesystem",
  					ReadOnly:                    false,
  					NotificationEnable:          false,
@@ -154794,10 +154775,10 @@ index 84c6bc9da..eed39486e 100644
  github.com/vbatts/tar-split v0.12.2/go.mod h1:eF6B6i6ftWQcDqEn3/iGFRFRo8cBIMSJVOpnNdfTMFA=
  github.com/vmihailenco/msgpack/v5 v5.4.1 h1:cQriyiUvjTwOHg8QZaPihLWeRAAVoCpE00IUPn0Bjt8=
 diff --git a/src/lib/config/metadata/metadatalist.go b/src/lib/config/metadata/metadatalist.go
-index 0abcd1d1b..5e056355b 100644
+index 2d3cf21d5..3d8a3526f 100644
 --- a/src/lib/config/metadata/metadatalist.go
 +++ b/src/lib/config/metadata/metadatalist.go
-@@ -197,6 +197,7 @@ var (
+@@ -199,6 +199,7 @@ var (
  		{Name: common.SkipAuditLogDatabase, Scope: UserScope, Group: BasicGroup, EnvKey: "SKIP_LOG_AUDIT_DATABASE", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: `The option to skip audit log in database`},
  		{Name: common.ScannerSkipUpdatePullTime, Scope: UserScope, Group: BasicGroup, EnvKey: "SCANNER_SKIP_UPDATE_PULL_TIME", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: `The option to skip update pull time for scanner`},
  		{Name: common.AuditLogEventsDisabled, Scope: UserScope, Group: BasicGroup, EnvKey: "AUDIT_LOG_EVENTS_DISABLED", DefaultValue: "", ItemType: &StringType{}, Editable: false, Description: `The option to skip audit log for some operations, the key is <operation>_<resource_type> like create_user, delete_user, separated by comma`},
@@ -167062,7 +167043,7 @@ index bc9c862e3..0ec5aea61 100644
          KEY: 'robot',
          VALUE: {
 diff --git a/src/portal/src/i18n/lang/de-de-lang.json b/src/portal/src/i18n/lang/de-de-lang.json
-index 58aaca5f5..7ae1de5f2 100644
+index bff91c16a..7b4303cbb 100644
 --- a/src/portal/src/i18n/lang/de-de-lang.json
 +++ b/src/portal/src/i18n/lang/de-de-lang.json
 @@ -161,6 +161,7 @@
@@ -167085,7 +167066,7 @@ index 58aaca5f5..7ae1de5f2 100644
          "REPLICATION_TRIGGER": "Trigger",
          "PUSH_BASED_ONLY": "Only for the push-based replication",
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index 4f4f572eb..f62f4c00a 100644
+index 00142411f..6553c7389 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
 @@ -16,6 +16,7 @@
@@ -167180,7 +167161,7 @@ index 4f4f572eb..f62f4c00a 100644
          "PROJECT_QUOTAS": "Project Quotas",
          "VULNERABILITY": "Vulnerability",
          "GC": "Garbage Collection",
-@@ -805,6 +846,7 @@
+@@ -808,6 +849,7 @@
          "NO_CHANGE": "Save abort because nothing changed",
          "SKIP_SCANNER_PULL_TIME": "Retain Image \"last pull time\" On Scanning",
          "TOOLTIP": {
@@ -167188,7 +167169,7 @@ index 4f4f572eb..f62f4c00a 100644
              "SELF_REGISTRATION_ENABLE": "Enable sign up.",
              "SELF_REGISTRATION_DISABLE": "Deactivate sign up.",
              "VERIFY_REMOTE_CERT": "Determine whether image replication should verify the certificate for a remote registry. Uncheck this box to skip verifying the remote registry endpoint certificate.",
-@@ -1183,6 +1225,7 @@
+@@ -1187,6 +1229,7 @@
          "ADD_GROUP": "Add group member",
          "ADD_USER": "Add user member",
          "DELETE_LABEL": "Delete label",
@@ -167196,7 +167177,7 @@ index 4f4f572eb..f62f4c00a 100644
          "REPLICATION": "Replication",
          "DAY_AGO": " day(s) ago",
          "HOUR_AGO": " hour(s) ago",
-@@ -1629,6 +1672,10 @@
+@@ -1633,6 +1676,10 @@
          "PAGE_SIZE": "Page size"
      },
      "SYSTEM_ROBOT": {
@@ -167207,7 +167188,7 @@ index 4f4f572eb..f62f4c00a 100644
          "READ": "Read",
          "CREATE": "Create",
          "ARTIFACT": "Artifact",
-@@ -1698,6 +1745,7 @@
+@@ -1702,6 +1749,7 @@
          "FINAL_SYSTEM_NAME_TIP": "The final system robot name consists of the prefix and the current input value",
          "PUSH_AND_PULL": "Push",
          "PUSH_PERMISSION_TOOLTIP": "Push permission can not work alone, it must work with pull permission",
@@ -167216,7 +167197,7 @@ index 4f4f572eb..f62f4c00a 100644
          "LIST": "List",
          "REPOSITORY": "Repository",
 diff --git a/src/portal/src/i18n/lang/es-es-lang.json b/src/portal/src/i18n/lang/es-es-lang.json
-index 44edf59da..6e7741d96 100644
+index 0549e10b1..334c37cef 100644
 --- a/src/portal/src/i18n/lang/es-es-lang.json
 +++ b/src/portal/src/i18n/lang/es-es-lang.json
 @@ -160,6 +160,7 @@
@@ -167239,7 +167220,7 @@ index 44edf59da..6e7741d96 100644
          "REPLICATION_TRIGGER": "Disparador",
          "PUSH_BASED_ONLY": "Solo para replicación push-based",
 diff --git a/src/portal/src/i18n/lang/fr-fr-lang.json b/src/portal/src/i18n/lang/fr-fr-lang.json
-index 3412b2d7f..1e5c6e1a0 100644
+index 60ad0417b..2c9f5e635 100644
 --- a/src/portal/src/i18n/lang/fr-fr-lang.json
 +++ b/src/portal/src/i18n/lang/fr-fr-lang.json
 @@ -161,6 +161,7 @@
@@ -167262,7 +167243,7 @@ index 3412b2d7f..1e5c6e1a0 100644
          "REPLICATION_TRIGGER": "Déclencheur",
          "PUSH_BASED_ONLY": "Uniquement pour la réplication de type push",
 diff --git a/src/portal/src/i18n/lang/ko-kr-lang.json b/src/portal/src/i18n/lang/ko-kr-lang.json
-index b738028f7..df240d978 100644
+index eb50a5bdc..0151b995c 100644
 --- a/src/portal/src/i18n/lang/ko-kr-lang.json
 +++ b/src/portal/src/i18n/lang/ko-kr-lang.json
 @@ -161,6 +161,7 @@
@@ -167285,7 +167266,7 @@ index b738028f7..df240d978 100644
          "REPLICATION_TRIGGER": "트리거",
          "PUSH_BASED_ONLY": "푸시 기반 복제에만 해당됩니다",
 diff --git a/src/portal/src/i18n/lang/pt-br-lang.json b/src/portal/src/i18n/lang/pt-br-lang.json
-index f4e5118bd..7dcb4a9f9 100644
+index 1089ce606..529c61ae9 100644
 --- a/src/portal/src/i18n/lang/pt-br-lang.json
 +++ b/src/portal/src/i18n/lang/pt-br-lang.json
 @@ -161,6 +161,7 @@
@@ -167308,7 +167289,7 @@ index f4e5118bd..7dcb4a9f9 100644
          "REPLICATION_TRIGGER": "Gatilho",
          "PUSH_BASED_ONLY": "Only for the push-based replication",
 diff --git a/src/portal/src/i18n/lang/tr-tr-lang.json b/src/portal/src/i18n/lang/tr-tr-lang.json
-index 165f180da..c30de5613 100644
+index db78cbfb7..90d178411 100644
 --- a/src/portal/src/i18n/lang/tr-tr-lang.json
 +++ b/src/portal/src/i18n/lang/tr-tr-lang.json
 @@ -161,6 +161,7 @@
@@ -167331,7 +167312,7 @@ index 165f180da..c30de5613 100644
          "REPLICATION_TRIGGER": "Tetikleyici",
          "PUSH_BASED_ONLY": "Only for the push-based replication",
 diff --git a/src/portal/src/i18n/lang/zh-cn-lang.json b/src/portal/src/i18n/lang/zh-cn-lang.json
-index d0ab3d18c..19a552d85 100644
+index 7e0d476fd..ed847006c 100644
 --- a/src/portal/src/i18n/lang/zh-cn-lang.json
 +++ b/src/portal/src/i18n/lang/zh-cn-lang.json
 @@ -161,6 +161,7 @@
@@ -167354,7 +167335,7 @@ index d0ab3d18c..19a552d85 100644
          "REPLICATION_TRIGGER": "触发器",
          "PUSH_BASED_ONLY": "仅针对于 Push-Based 模式下的复制操作",
 diff --git a/src/portal/src/i18n/lang/zh-tw-lang.json b/src/portal/src/i18n/lang/zh-tw-lang.json
-index 70e993870..888fd4d2d 100644
+index 799f5e5c8..c283b0f6b 100644
 --- a/src/portal/src/i18n/lang/zh-tw-lang.json
 +++ b/src/portal/src/i18n/lang/zh-tw-lang.json
 @@ -161,6 +161,7 @@
@@ -173176,10 +173157,10 @@ index fdcf326e4..30c9c4e12 100644
  	tests := []struct {
  		name          string
 diff --git a/src/server/v2.0/handler/systeminfo.go b/src/server/v2.0/handler/systeminfo.go
-index 8c13266e3..53418685a 100644
+index cd4fcd70b..dd72040ec 100644
 --- a/src/server/v2.0/handler/systeminfo.go
 +++ b/src/server/v2.0/handler/systeminfo.go
-@@ -125,6 +125,7 @@ func (s *sysInfoAPI) convertInfo(d *si.Data) *models.GeneralInfo {
+@@ -126,6 +126,7 @@ func (s *sysInfoAPI) convertInfo(d *si.Data) *models.GeneralInfo {
  		res.ReadOnly = &d.Protected.ReadOnly
  		res.RegistryStorageProviderName = &d.Protected.RegistryStorageProviderName
  		res.NotificationEnable = &d.Protected.NotificationEnable
