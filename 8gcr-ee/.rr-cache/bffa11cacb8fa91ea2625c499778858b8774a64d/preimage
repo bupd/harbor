@@ -94,6 +94,7 @@ tasks:
       - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
       - go tool cover -html=coverage.out -o coverage.html
 
+<<<<<<<
   # ----------------------------------------------------------------------------
   # CI-hostile packages excluded from unit:pure / unit:db (default filter).
   # Each entry is here because:
@@ -122,6 +123,10 @@ tasks:
   # (Passing an empty string does NOT work — slim-sprig `default` treats it as
   # unset, and `grep -vE ''` would drop every line anyway.)
   # ----------------------------------------------------------------------------
+=======
+  # CI-hostile packages excluded from unit:pure / unit:db (default filter).
+  # Override in dev with `task test:unit:pure PKG_EXCLUDE=` to run everything.
+>>>>>>>
   unit:pure:
     desc: "Run pure unit tests (no DB/Redis needed) with full parallelism"
     deps: [build:gen-apis]
@@ -129,7 +134,11 @@ tasks:
     env:
       UTTEST: "true"
     vars:
+<<<<<<<
+      PKG_EXCLUDE: '{{.PKG_EXCLUDE | default "/controller/ldap$|/core/auth/ldap$|/pkg/ldap$|/core/api$|/core/controllers$|/pkg/proxy/connection$|/pkg/token$|/server/middleware/security$|/server/middleware/blob$|/controller/systeminfo$|/pkg/jobmonitor$|/common/utils/email$|/jobservice/runner$|/jobservice/logger/getter$|/jobservice/job/impl/gc$|/core/session$|/lib/cache/redis$|/controller/usergroup/test$|/pkg/scan/dao/scanner$|/pkg/scan/export$|/pkg/scan/dao/scan$|/pkg/scan/postprocessors$|/pkg/systemartifact$|/pkg/accessory/model/attestation$"}}'
+=======
       PKG_EXCLUDE: '{{.PKG_EXCLUDE | default .DEFAULT_PKG_EXCLUDE}}'
+>>>>>>>
     cmd: |
       pkgs=$(go list ./... | grep -vE '{{.PKG_EXCLUDE}}' | tr '\n' ' ')
       # shellcheck disable=SC2086
@@ -142,7 +151,11 @@ tasks:
     env:
       UTTEST: "true"
     vars:
+<<<<<<<
+      PKG_EXCLUDE: '{{.PKG_EXCLUDE | default "/controller/ldap$|/core/auth/ldap$|/pkg/ldap$|/core/api$|/core/controllers$|/pkg/proxy/connection$|/pkg/token$|/server/middleware/security$|/server/middleware/blob$|/controller/systeminfo$|/pkg/jobmonitor$|/common/utils/email$|/jobservice/runner$|/jobservice/logger/getter$|/jobservice/job/impl/gc$|/core/session$|/lib/cache/redis$|/controller/usergroup/test$|/pkg/scan/dao/scanner$|/pkg/scan/export$|/pkg/scan/dao/scan$|/pkg/scan/postprocessors$|/pkg/systemartifact$|/pkg/accessory/model/attestation$"}}'
+=======
       PKG_EXCLUDE: '{{.PKG_EXCLUDE | default .DEFAULT_PKG_EXCLUDE}}'
+>>>>>>>
     cmd: |
       pkgs=$(go list -tags db ./... | grep -vE '{{.PKG_EXCLUDE}}' | tr '\n' ' ')
       # shellcheck disable=SC2086
