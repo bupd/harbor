@@ -9,17 +9,6 @@ includes:
     dir: ..
     internal: true
 
-vars:
-  # Packages we still exclude from CI by default because they need external
-  # services or a full Harbor stack we do not provision in unit-test jobs.
-  DEFAULT_DB_EXCLUDE: '/controller/ldap$|/core/auth/ldap$|/pkg/ldap$|/core/api$|/core/controllers$|/server/middleware/security$|/controller/systeminfo$|/common/utils/email$|/jobservice/runner$|/jobservice/logger/getter$|/jobservice/logger/backend$|/jobservice/logger/sweeper$|/controller/usergroup/test$|/pkg/exporter$|/pkg/scan/dao/scan$|/pkg/scan/postprocessors$|/pkg/systemartifact$'
-  # Packages excluded from the pure lane because they require Redis/Postgres
-  # setup or have db-tagged tests that should only run in the DB lane.
-  DEFAULT_PURE_EXCLUDE: '/controller/ldap$|/core/auth/ldap$|/pkg/ldap$|/core/api$|/core/controllers$|/server/middleware/security$|/controller/systeminfo$|/common/utils/email$|/jobservice/runner$|/jobservice/logger/getter$|/jobservice/logger/backend$|/jobservice/logger/sweeper$|/controller/usergroup/test$|/pkg/exporter$|/pkg/scan/dao/scan$|/pkg/scan/postprocessors$|/pkg/systemartifact$|/core/session$|/jobservice/job/impl/gc$|/lib/cache/redis$|/pkg/jobmonitor$|/pkg/proxy/connection$|/pkg/scan/dao/scanner$|/pkg/scan/export$|/server/middleware/blob$'
-  # These packages need Redis/Postgres-backed test setup but do not use
-  # //go:build db test files, so we add them explicitly to the DB lane.
-  DEFAULT_DB_EXTRA_PACKAGES: 'github.com/goharbor/harbor/src/core/session github.com/goharbor/harbor/src/jobservice/job/impl/gc github.com/goharbor/harbor/src/lib/cache/redis github.com/goharbor/harbor/src/pkg/jobmonitor github.com/goharbor/harbor/src/pkg/proxy/connection'
-
 tasks:
   # ============================================================================
   # Linting Tasks
@@ -82,102 +71,57 @@ tasks:
   # Unit Tests
   # ============================================================================
 
-  _prepare-go-tests:
-    internal: true
-    cmds:
-      - task: build:gen-apis
+  unit:
+    desc: "Run Go unit tests with race detection"
+    dir: src
+    env:
+      UTTEST: "true"
+    cmd: go test -v -race -cover ./...
 
   unit:coverage:
-    desc: "Run pure unit tests and generate HTML coverage report"
+    desc: "Run Go unit tests and generate HTML coverage report"
+    dir: src
+    env:
+      UTTEST: "true"
     cmds:
-      - task: unit:pure
-        vars:
-          RACE_FLAGS: "-race"
-          COVER_FLAGS: "-coverprofile=coverage.out -covermode=atomic"
-      - cmd: cd src && go tool cover -html=coverage.out -o coverage.html
+      - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      - go tool cover -html=coverage.out -o coverage.html
 
-  # ----------------------------------------------------------------------------
-  # CI-hostile packages excluded from the DB lane by default.
-  # Each entry is here because:
-  #   - LDAP packages (/controller/ldap, /core/auth/ldap, /pkg/ldap): need LDAP
-  #     server we don't provision
-  #   - /core/api, /core/controllers: need full Harbor stack
-  #   - /server/middleware/security, /controller/systeminfo: need /etc/core/
-  #     cert files
-  #   - /common/utils/email: reaches external SMTP (smtp.gmail.com) from tests
-  #   - /jobservice/runner: Redis job tracker state ordering issues
-  #   - /jobservice/logger/getter: DB state ordering when packages run in parallel
-  #   - /controller/usergroup/test, /pkg/scan/dao/scan,
-  #     /pkg/scan/postprocessors, /pkg/systemartifact:
-  #     upstream test-ordering / FK-constraint issues
-  #
-  # The DB filter is defined once as DEFAULT_DB_EXCLUDE at the top of this
-  # file. The pure lane uses DEFAULT_PURE_EXCLUDE, which additionally routes
-  # Redis/Postgres-backed packages into the DB lane.
-  # To run every package in dev, pass a sentinel regex that matches nothing:
-  #     task test:unit:pure PURE_PKG_EXCLUDE='^$'
-  # (Passing an empty string does NOT work — slim-sprig `default` treats it as
-  # unset, and `grep -vE ''` would drop every line anyway.)
-  # ----------------------------------------------------------------------------
+  # CI-hostile packages excluded from unit:pure / unit:db (default filter).
+  # Override in dev with `task test:unit:pure PKG_EXCLUDE=` to run everything.
   unit:pure:
     desc: "Run pure unit tests (no DB/Redis needed) with full parallelism"
-    cmds:
-      - task: _prepare-go-tests
-      - cmd: |
-          cd src
-          pkgs=$(../tools/ci/list-go-test-packages.sh pure '{{.PURE_PKG_EXCLUDE | default .DEFAULT_PURE_EXCLUDE}}' \
-            | awk 'BEGIN { shard="{{.SHARD_INDEX | default ""}}"; total="{{.SHARD_TOTAL | default ""}}"; } total == "" || shard == "" || ((NR - 1) % total) == shard { print }' \
-            | tr '\n' ' ')
-          if [ -z "$pkgs" ]; then
-            echo "no pure test packages matched"
-            exit 1
-          fi
-          # shellcheck disable=SC2086
-          UTTEST=true go test {{.RACE_FLAGS | default ""}} -timeout=15m {{.COVER_FLAGS}} {{.TEST_FLAGS}} $pkgs
+    deps: [build:gen-apis]
+    dir: src
+    env:
+      UTTEST: "true"
+<<<<<<<
+    cmd: go test -race -timeout=15m {{.COVER_FLAGS}} {{.TEST_FLAGS}} ./...
+=======
+    vars:
+      PKG_EXCLUDE: '{{.PKG_EXCLUDE | default "/controller/ldap$|/core/auth/ldap$|/pkg/ldap$|/core/api$|/core/controllers$|/pkg/proxy/connection$|/pkg/token$|/server/middleware/security$|/server/middleware/blob$|/controller/systeminfo$|/pkg/jobmonitor$|/common/utils/email$|/jobservice/runner$|/jobservice/logger/getter$|/jobservice/job/impl/gc$|/core/session$|/lib/cache/redis$|/controller/usergroup/test$|/pkg/scan/dao/scanner$|/pkg/scan/export$|/pkg/scan/dao/scan$|/pkg/scan/postprocessors$|/pkg/systemartifact$|/pkg/accessory/model/attestation$"}}'
+    cmd: |
+      pkgs=$(go list ./... | grep -vE '{{.PKG_EXCLUDE}}' | tr '\n' ' ')
+      # shellcheck disable=SC2086
+      go test -race -timeout=15m {{.COVER_FLAGS}} {{.TEST_FLAGS}} $pkgs
+>>>>>>>
 
   unit:db:
     desc: "Run DB-dependent unit tests serially (needs PostgreSQL + Redis)"
-    cmds:
-      - task: _prepare-go-tests
-      - cmd: |
-          cd src
-          pkgs=$(
-            {
-              ../tools/ci/list-go-test-packages.sh db-tagged '{{.DB_PKG_EXCLUDE | default .DEFAULT_DB_EXCLUDE}}'
-              printf '%s\n' '{{.DB_EXTRA_PACKAGES | default .DEFAULT_DB_EXTRA_PACKAGES}}' | tr ' ' '\n'
-            } \
-            | awk 'NF' \
-            | sort -u \
-            | awk 'BEGIN { shard="{{.SHARD_INDEX | default ""}}"; total="{{.SHARD_TOTAL | default ""}}"; } total == "" || shard == "" || ((NR - 1) % total) == shard { print }' \
-            | tr '\n' ' '
-          )
-          if [ -z "$pkgs" ]; then
-            echo "no db-tagged test packages matched"
-            exit 1
-          fi
-          # shellcheck disable=SC2086
-          UTTEST=true go test {{.RACE_FLAGS | default ""}} -timeout=15m -tags db -p 1 -parallel 1 {{.COVER_FLAGS}} {{.TEST_FLAGS}} $pkgs
-
-  unit:
-    desc: "Alias for pure unit tests"
-    cmds:
-      - task: unit:pure
-        vars:
-          PURE_PKG_EXCLUDE: '{{.PURE_PKG_EXCLUDE}}'
-          RACE_FLAGS: '{{.RACE_FLAGS}}'
-          COVER_FLAGS: '{{.COVER_FLAGS}}'
-          TEST_FLAGS: '{{.TEST_FLAGS}}'
-
-  db:
-    desc: "Alias for DB unit tests"
-    cmds:
-      - task: unit:db
-        vars:
-          DB_PKG_EXCLUDE: '{{.DB_PKG_EXCLUDE}}'
-          DB_EXTRA_PACKAGES: '{{.DB_EXTRA_PACKAGES}}'
-          RACE_FLAGS: '{{.RACE_FLAGS}}'
-          COVER_FLAGS: '{{.COVER_FLAGS}}'
-          TEST_FLAGS: '{{.TEST_FLAGS}}'
+    deps: [build:gen-apis]
+    dir: src
+    env:
+      UTTEST: "true"
+<<<<<<<
+    cmd: go test -race -timeout=15m -tags db -p 1 -parallel 1 {{.COVER_FLAGS}} {{.TEST_FLAGS}} ./...
+=======
+    vars:
+      PKG_EXCLUDE: '{{.PKG_EXCLUDE | default "/controller/ldap$|/core/auth/ldap$|/pkg/ldap$|/core/api$|/core/controllers$|/pkg/proxy/connection$|/pkg/token$|/server/middleware/security$|/server/middleware/blob$|/controller/systeminfo$|/pkg/jobmonitor$|/common/utils/email$|/jobservice/runner$|/jobservice/logger/getter$|/jobservice/job/impl/gc$|/core/session$|/lib/cache/redis$|/controller/usergroup/test$|/pkg/scan/dao/scanner$|/pkg/scan/export$|/pkg/scan/dao/scan$|/pkg/scan/postprocessors$|/pkg/systemartifact$|/pkg/accessory/model/attestation$"}}'
+    cmd: |
+      pkgs=$(go list -tags db ./... | grep -vE '{{.PKG_EXCLUDE}}' | tr '\n' ' ')
+      # shellcheck disable=SC2086
+      go test -race -timeout=15m -tags db -p 1 -parallel 1 {{.COVER_FLAGS}} {{.TEST_FLAGS}} $pkgs
+>>>>>>>
 
   unit:watch:
     desc: "Re-run Go unit tests on file changes (requires watchexec)"
@@ -249,10 +193,12 @@ tasks:
   # ============================================================================
 
   all:
-    desc: "Run pure unit tests and DB tests"
+    desc: "Run all linters, vulnerability scan, and unit tests"
     cmds:
-      - task: unit:pure
-      - task: unit:db
+      - task: lint:api
+      - task: lint
+      - task: vuln-check
+      - task: unit
 
   ci:
     desc: "Run full CI pipeline with reports (lint, vuln scan, split unit tests)"
@@ -269,6 +215,7 @@ tasks:
 
   _ci-tests:
     internal: true
+    deps: [build:gen-apis]
     cmds:
       - task: unit:pure
         vars:
@@ -296,7 +243,7 @@ tasks:
     desc: "Run API lint and unit tests only (fast validation)"
     cmds:
       - task: lint:api
-      - task: unit:pure
+      - task: unit
 
   # ============================================================================
   # Utilities
