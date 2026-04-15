@@ -37,7 +37,7 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 src/portal/src/app/base/left-side-nav/config/branding/branding.component.ts
 
 diff --git a/api/v2.0/swagger.yaml b/api/v2.0/swagger.yaml
-index 1b04ec22a..ce58d9de1 100644
+index bed77bb16..97b87ee39 100644
 --- a/api/v2.0/swagger.yaml
 +++ b/api/v2.0/swagger.yaml
 @@ -4106,6 +4106,62 @@ paths:
@@ -103,10 +103,10 @@ index 1b04ec22a..ce58d9de1 100644
    /systeminfo/volumes:
      get:
        summary: Get system volume info (total/free size).
-@@ -8071,6 +8127,63 @@ definitions:
+@@ -8076,6 +8132,63 @@ definitions:
          x-nullable: true
          x-omitempty: true
-         description: The OIDC provider name, empty if current auth is not OIDC_auth or OIDC provider is not configured.
+         description: 'The page unauthenticated users see before logging in. Valid values are "login" and "public_projects".'
 +  BrandingConfig:
 +    type: object
 +    properties:
@@ -179,7 +179,7 @@ index 000000000..f8e246635
 +    update_time  TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 +);
 diff --git a/src/controller/systeminfo/controller.go b/src/controller/systeminfo/controller.go
-index e3d40b303..83f1c7c01 100644
+index 6fd572c3a..d05b0c062 100644
 --- a/src/controller/systeminfo/controller.go
 +++ b/src/controller/systeminfo/controller.go
 @@ -16,10 +16,13 @@ package systeminfo
@@ -209,7 +209,7 @@ index e3d40b303..83f1c7c01 100644
  )
  
  const defaultRootCert = "/etc/core/ca/ca.crt"
-@@ -53,7 +59,8 @@ type Data struct {
+@@ -54,7 +60,8 @@ type Data struct {
  }
  
  type protectedData struct {
@@ -219,7 +219,7 @@ index e3d40b303..83f1c7c01 100644
  	RegistryURL                 string
  	HarborVersion               string
  	ExtURL                      string
-@@ -70,6 +77,27 @@ type Options struct {
+@@ -71,6 +78,27 @@ type Options struct {
  	WithProtectedInfo bool
  }
  
@@ -247,7 +247,7 @@ index e3d40b303..83f1c7c01 100644
  // Controller defines the methods needed for systeminfo API
  type Controller interface {
  
-@@ -81,9 +109,184 @@ type Controller interface {
+@@ -82,9 +110,184 @@ type Controller interface {
  
  	// GetCA returns a ReadCloser of Harbor's CA if it's configured and accessible from Harbor core
  	GetCA(ctx context.Context) (io.ReadCloser, error)
@@ -433,7 +433,7 @@ index e3d40b303..83f1c7c01 100644
  
  func (c *controller) GetInfo(ctx context.Context, opt Options) (*Data, error) {
  	logger := log.GetLogger(ctx)
-@@ -171,5 +374,67 @@ func (c *controller) GetCA(ctx context.Context) (io.ReadCloser, error) {
+@@ -173,5 +376,67 @@ func (c *controller) GetCA(ctx context.Context) (io.ReadCloser, error) {
  
  // NewController return an instance of controller
  func NewController() Controller {
@@ -1396,7 +1396,7 @@ index 172b96bbf..0d0ae3c15 100644
          }
          return null;
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index c9ac1de9e..4f4f572eb 100644
+index c1e131d1d..00142411f 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
 @@ -774,6 +774,7 @@
@@ -1407,7 +1407,7 @@ index c9ac1de9e..4f4f572eb 100644
          "PROJECT_QUOTAS": "Project Quotas",
          "VULNERABILITY": "Vulnerability",
          "GC": "Garbage Collection",
-@@ -1898,6 +1899,19 @@
+@@ -1902,6 +1903,19 @@
          "DATE_PICKER_SELECT_YEAR_TEXT": "Select year, the current year is {CALENDAR_YEAR}",
          "DATE_PICKER_SELECTED_LABEL": "{FULL_DATE} - Selected"
      },
@@ -1428,7 +1428,7 @@ index c9ac1de9e..4f4f572eb 100644
          "BANNER_MESSAGE": "Banner Message",
          "MESSAGE_TYPE": "Message type",
 diff --git a/src/server/v2.0/handler/systeminfo.go b/src/server/v2.0/handler/systeminfo.go
-index 6c673e08c..8c13266e3 100644
+index baa4d2e37..cd4fcd70b 100644
 --- a/src/server/v2.0/handler/systeminfo.go
 +++ b/src/server/v2.0/handler/systeminfo.go
 @@ -51,6 +51,24 @@ func (s *sysInfoAPI) GetSystemInfo(ctx context.Context, _ systeminfo.GetSystemIn
