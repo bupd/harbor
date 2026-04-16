@@ -1060,7 +1060,7 @@ index 000000000..de7b13ad0
 +        };
 +
 +        this.onGoing = true;
-+        this.systeminfoService.updateBrandingInfo(config).subscribe({
++        this.systeminfoService.updateBrandingInfo({ brandingConfig: config }).subscribe({
 +            next: () => {
 +                this.onGoing = false;
 +                this.getAndSetBrandingConfig();

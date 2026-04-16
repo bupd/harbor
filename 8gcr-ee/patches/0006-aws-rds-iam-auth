@@ -1,0 +1,891 @@
+feat(dao): add AWS RDS IAM authentication support
+
+From: Prasanth Baskar <bupdprasanth@gmail.com>
+
+
+---
+ docs/aws-native-deployment/README.md              |  183 ++++++++++++++++++++
+ docs/aws-native-deployment/values-aws-native.yaml |   97 +++++++++++
+ src/cmd/exporter/main.go                          |    2 
+ src/cmd/standalone-db-migrator/main.go            |   17 +-
+ src/common/const.go                               |    6 -
+ src/common/dao/pgsql.go                           |   36 ++++
+ src/common/dao/pgsql_iam.go                       |  110 ++++++++++++
+ src/common/dao/pgsql_iam_test.go                  |  192 +++++++++++++++++++++
+ src/common/models/database.go                     |    2 
+ src/go.mod                                        |   15 ++
+ src/go.sum                                        |   30 +++
+ src/lib/config/metadata/metadatalist.go           |    2 
+ src/lib/config/systemconfig.go                    |    4 
+ src/pkg/config/manager.go                         |    4 
+ 14 files changed, 686 insertions(+), 14 deletions(-)
+ create mode 100644 docs/aws-native-deployment/README.md
+ create mode 100644 docs/aws-native-deployment/values-aws-native.yaml
+ create mode 100644 src/common/dao/pgsql_iam.go
+ create mode 100644 src/common/dao/pgsql_iam_test.go
+
+diff --git a/docs/aws-native-deployment/README.md b/docs/aws-native-deployment/README.md
+new file mode 100644
+index 000000000..2ca9dee42
+--- /dev/null
++++ b/docs/aws-native-deployment/README.md
+@@ -0,0 +1,183 @@
++# Harbor on AWS: Zero-Static-Secret Deployment
++
++Deploy Harbor on EKS with native AWS authentication: **RDS IAM Database Authentication** and **S3 IRSA**.
++
++For the full walkthrough, see the blog post:
++[Hardening Harbor on AWS: Achieving Zero-Static-Secret Architecture](https://container-registry.com/posts/hardening-harbor-on-aws/)
++
++## Prerequisites
++
++- AWS Account with IAM permissions
++- `aws-cli`, `kubectl`, `helm`, `eksctl` installed
++- Access to 8gears Container Registry
++
++## Quick Start
++
++### 1. Set Environment Variables
++
++```bash
++export AWS_REGION="us-east-1"
++export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
++export CLUSTER_NAME="harbor-cluster"
++export BUCKET_NAME="harbor-registry-store"
++export SA_NAME="harbor-sa"
++export NAMESPACE="harbor"
++export DB_NAME="registry"
++export DB_USER="harbor_iam_user"
++export DB_INSTANCE_ID="harbor-db"
++```
++
++### 2. Create EKS Cluster with OIDC
++
++```bash
++eksctl create cluster \
++  --name $CLUSTER_NAME \
++  --region $AWS_REGION \
++  --version 1.30 \
++  --with-oidc \
++  --managed \
++  --node-type t3.medium \
++  --nodes 2
++```
++
++### 3. Create S3 Bucket
++
++```bash
++aws s3 mb "s3://$BUCKET_NAME" --region $AWS_REGION
++```
++
++### 4. Create RDS Instance
++
++Create the database first so its resource ID is available for the IAM policy.
++
++```bash
++aws rds create-db-instance \
++    --db-instance-identifier $DB_INSTANCE_ID \
++    --db-instance-class db.t3.medium \
++    --engine postgres \
++    --engine-version 18.1 \
++    --master-username harbor_admin \
++    --master-user-password "<yourPassword>" \
++    --allocated-storage 20 \
++    --db-name $DB_NAME \
++    --enable-iam-database-authentication \
++    --vpc-security-group-ids <your-sg-id> \
++    --db-subnet-group-name <your-subnet-group> \
++    --no-publicly-accessible \
++    --region $AWS_REGION
++
++echo "Waiting for RDS instance (5-10 minutes)..."
++aws rds wait db-instance-available \
++  --db-instance-identifier $DB_INSTANCE_ID \
++  --region $AWS_REGION
++
++export DB_ENDPOINT=$(aws rds describe-db-instances \
++    --db-instance-identifier $DB_INSTANCE_ID \
++    --region $AWS_REGION \
++    --query "DBInstances[0].Endpoint.Address" \
++    --output text)
++
++export DB_RESOURCE_ID=$(aws rds describe-db-instances \
++    --db-instance-identifier $DB_INSTANCE_ID \
++    --region $AWS_REGION \
++    --query "DBInstances[0].DbiResourceId" \
++    --output text)
++```
++
++### 5. Create IAM Policy
++
++The `rds-db:connect` resource is scoped to the specific DB instance using its `DbiResourceId`.
++
++```bash
++aws iam create-policy \
++    --policy-name HarborNativePolicy \
++    --policy-document '{
++        "Version": "2012-10-17",
++        "Statement": [
++            {
++                "Effect": "Allow",
++                "Action": [
++                    "s3:GetObject", "s3:PutObject", "s3:DeleteObject",
++                    "s3:ListBucket", "s3:GetBucketLocation",
++                    "s3:ListBucketMultipartUploads",
++                    "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"
++                ],
++                "Resource": [
++                    "arn:aws:s3:::'"$BUCKET_NAME"'",
++                    "arn:aws:s3:::'"$BUCKET_NAME"'/*"
++                ]
++            },
++            {
++                "Effect": "Allow",
++                "Action": ["rds-db:connect"],
++                "Resource": [
++                    "arn:aws:rds-db:'"$AWS_REGION"':'"$AWS_ACCOUNT_ID"':dbuser:'"$DB_RESOURCE_ID"'/'"$DB_USER"'"
++                ]
++            }
++        ]
++    }'
++```
++
++### 6. Create IRSA Service Account
++
++```bash
++eksctl create iamserviceaccount \
++  --cluster=$CLUSTER_NAME \
++  --name=$SA_NAME \
++  --namespace=$NAMESPACE \
++  --attach-policy-arn="arn:aws:iam::$AWS_ACCOUNT_ID:policy/HarborNativePolicy" \
++  --approve
++```
++
++### 7. Configure IAM Database User
++
++Connect to RDS and create the IAM-enabled user:
++
++```sql
++CREATE USER harbor_iam_user WITH LOGIN;
++GRANT rds_iam TO harbor_iam_user;
++GRANT ALL PRIVILEGES ON DATABASE <your-db-name> TO harbor_iam_user;
++GRANT ALL ON SCHEMA public TO harbor_iam_user;
++```
++
++### 8. Deploy Harbor
++
++Update `values-aws-native.yaml` with your database endpoint, region, and bucket name, then:
++
++```bash
++sed -i "s|<YOUR_DB_ENDPOINT>|$DB_ENDPOINT|g" values-aws-native.yaml
++
++helm upgrade --install my-harbor oci://8gears.container-registry.com/8gcr/harbor \
++  --version 3.0.0 \
++  --namespace $NAMESPACE \
++  --create-namespace \
++  -f values-aws-native.yaml
++```
++
++## Verification
++
++```bash
++kubectl get pods -n $NAMESPACE
++kubectl logs -l app=harbor-core -n $NAMESPACE --tail=50
++# Look for: "IAM Auth: Enabled for region=..."
++```
++
++## Environment Variables Reference
++
++| Variable | Description |
++|---|---|
++| `POSTGRESQL_USE_IAM_AUTH` | Set to `"true"` to enable RDS IAM authentication |
++| `POSTGRESQL_AWS_REGION` | AWS region for token generation (falls back to `AWS_REGION`) |
++| `POSTGRESQL_HOST` | RDS endpoint |
++| `POSTGRESQL_PORT` | RDS port (default: 5432) |
++| `POSTGRESQL_USERNAME` | IAM-enabled database user |
++
++## Cleanup
++
++```bash
++helm uninstall my-harbor -n $NAMESPACE
++kubectl delete namespace $NAMESPACE
++aws rds delete-db-instance --db-instance-identifier $DB_INSTANCE_ID --skip-final-snapshot --region $AWS_REGION
++aws s3 rm s3://$BUCKET_NAME --recursive && aws s3 rb s3://$BUCKET_NAME
++eksctl delete cluster --name $CLUSTER_NAME --region $AWS_REGION
++```
+diff --git a/docs/aws-native-deployment/values-aws-native.yaml b/docs/aws-native-deployment/values-aws-native.yaml
+new file mode 100644
+index 000000000..8c00f01a1
+--- /dev/null
++++ b/docs/aws-native-deployment/values-aws-native.yaml
+@@ -0,0 +1,97 @@
++externalURL: "https://harbor.example.com"
++
++ingress:
++  enabled: true
++  className: "nginx"
++  annotations:
++    nginx.ingress.kubernetes.io/proxy-body-size: "0"
++    nginx.ingress.kubernetes.io/ssl-redirect: "true"
++  hosts:
++    - host: "harbor.example.com"
++      paths:
++        - path: /
++          pathType: Prefix
++  tls:
++    - secretName: harbor-tls
++      hosts:
++        - harbor.example.com
++  core: "harbor.example.com"
++
++database:
++  host: "<YOUR_DB_ENDPOINT>"
++  port: 5432
++  username: "harbor_iam_user"
++  # Required by Helm chart schema but ignored at runtime when IAM auth is
++  # enabled; the BeforeConnect hook replaces it with an ephemeral IAM token.
++  password: "placeholder"
++  database: "registry"
++  sslmode: "require"
++
++core:
++  replicas: 1
++  image:
++    repository: 8gears.container-registry.com/8gcr/harbor-core
++    tag: v2.15.0
++  serviceAccount:
++    create: false
++    name: "harbor-sa"
++  securityContext:
++    readOnlyRootFilesystem: false
++  config:
++    POSTGRESQL_USE_IAM_AUTH: "true"
++    POSTGRESQL_AWS_REGION: "<YOUR_AWS_REGION>"
++
++jobservice:
++  replicas: 1
++  image:
++    repository: 8gears.container-registry.com/8gcr/harbor-jobservice
++    tag: v2.15.0
++  serviceAccount:
++    create: false
++    name: "harbor-sa"
++  securityContext:
++    readOnlyRootFilesystem: false
++  config:
++    POSTGRESQL_USE_IAM_AUTH: "true"
++    POSTGRESQL_AWS_REGION: "<YOUR_AWS_REGION>"
++
++registry:
++  replicas: 1
++  image:
++    repository: 8gears.container-registry.com/8gcr/harbor-registry
++    tag: v2.15.0
++  serviceAccount:
++    create: false
++    name: "harbor-sa"
++  relativeurls: true
++  persistence:
++    enabled: false
++  securityContext:
++    readOnlyRootFilesystem: false
++  env:
++    - name: REGISTRY_STORAGE_CACHE_LAYERINFO
++      value: "inmemory"
++    - name: AWS_REGION
++      value: "<YOUR_AWS_REGION>"
++  storage:
++    type: s3
++    s3:
++      region: "<YOUR_AWS_REGION>"
++      bucket: "<YOUR_BUCKET_NAME>"
++      secure: true
++      v4auth: true
++      accesskey: ""
++      secretkey: ""
++
++portal:
++  service:
++    type: ClusterIP
++
++valkey:
++  enabled: true
++
++trivy:
++  enabled: true
++
++exporter:
++  enabled: false
+diff --git a/src/cmd/exporter/main.go b/src/cmd/exporter/main.go
+index dcde312d8..b8a4bafd0 100644
+--- a/src/cmd/exporter/main.go
++++ b/src/cmd/exporter/main.go
+@@ -56,6 +56,8 @@ func main() {
+ 			HealthCheckPeriod: viper.GetDuration("database.health_check_period"),
+ 			ConnectTimeout:    viper.GetDuration("database.connect_timeout"),
+ 			MinConns:          int32(viper.GetInt("database.min_conns")),
++			UseIAMAuth:        viper.GetBool("database.use_iam_auth"),
++			AWSRegion:         viper.GetString("database.aws_region"),
+ 		},
+ 	}
+ 	if err := dao.InitDatabase(dbCfg); err != nil {
+diff --git a/src/cmd/standalone-db-migrator/main.go b/src/cmd/standalone-db-migrator/main.go
+index bff3ee619..e8d1cde1b 100644
+--- a/src/cmd/standalone-db-migrator/main.go
++++ b/src/cmd/standalone-db-migrator/main.go
+@@ -17,6 +17,7 @@ package main
+ import (
+ 	"os"
+ 	"strconv"
++	"strings"
+ 
+ 	"github.com/goharbor/harbor/src/common/dao"
+ 	"github.com/goharbor/harbor/src/common/models"
+@@ -26,12 +27,14 @@ import (
+ 
+ // key: env var, value: default value
+ var defaultAttrs = map[string]string{
+-	"POSTGRESQL_HOST":     "localhost",
+-	"POSTGRESQL_PORT":     "5432",
+-	"POSTGRESQL_USERNAME": "postgres",
+-	"POSTGRESQL_PASSWORD": "password",
+-	"POSTGRESQL_DATABASE": "registry",
+-	"POSTGRESQL_SSLMODE":  "disable",
++	"POSTGRESQL_HOST":         "localhost",
++	"POSTGRESQL_PORT":         "5432",
++	"POSTGRESQL_USERNAME":     "postgres",
++	"POSTGRESQL_PASSWORD":     "password",
++	"POSTGRESQL_DATABASE":     "registry",
++	"POSTGRESQL_SSLMODE":      "disable",
++	"POSTGRESQL_USE_IAM_AUTH": "false",
++	"POSTGRESQL_AWS_REGION":   "",
+ }
+ 
+ func main() {
+@@ -46,6 +49,8 @@ func main() {
+ 			Database:     getAttr("POSTGRESQL_DATABASE"),
+ 			SSLMode:      getAttr("POSTGRESQL_SSLMODE"),
+ 			MaxOpenConns: 5,
++			UseIAMAuth:   strings.EqualFold(getAttr("POSTGRESQL_USE_IAM_AUTH"), "true"),
++			AWSRegion:    getAttr("POSTGRESQL_AWS_REGION"),
+ 		},
+ 	}
+ 
+diff --git a/src/common/const.go b/src/common/const.go
+index c75d6b324..058fd838b 100644
+--- a/src/common/const.go
++++ b/src/common/const.go
+@@ -65,8 +65,10 @@ const (
+ 	PostGreSQLHealthCheckPeriod      = "postgresql_health_check_period"
+ 	PostGreSQLConnectTimeout         = "postgresql_connect_timeout"
+ 	PostGreSQLMinConns               = "postgresql_min_conns"
+-	PostGreSQLURL    = "postgresql_url"
+-	SelfRegistration = "self_registration"
++	PostGreSQLURL                    = "postgresql_url"
++	PostGreSQLUseIAMAuth             = "postgresql_use_iam_auth"
++	PostGreSQLAWSRegion              = "postgresql_aws_region"
++	SelfRegistration                 = "self_registration"
+ 	CoreURL                          = "core_url"
+ 	CoreLocalURL                     = "core_local_url"
+ 	JobServiceURL                    = "jobservice_url"
+diff --git a/src/common/dao/pgsql.go b/src/common/dao/pgsql.go
+index 0694970ce..515c5dcbd 100644
+--- a/src/common/dao/pgsql.go
++++ b/src/common/dao/pgsql.go
+@@ -52,6 +52,10 @@ func NewPGSQL(cfg *models.PostGreSQL) Database {
+ 	if len(cfg.SSLMode) == 0 {
+ 		cfg.SSLMode = "disable"
+ 	}
++	if cfg.UseIAMAuth && cfg.SSLMode == "disable" {
++		cfg.SSLMode = "require"
++		log.Info("IAM Auth: Forcing sslmode=require")
++	}
+ 	return &pgsql{cfg: cfg}
+ }
+ 
+@@ -65,7 +69,16 @@ func (p *pgsql) Register(alias ...string) error {
+ 		}
+ 	}
+ 
+-	pool, err := dbpool.New(context.Background(), p.cfg)
++	var opts []dbpool.Option
++	if p.cfg.UseIAMAuth {
++		opt, err := iamAuthOption(context.Background(), p.cfg)
++		if err != nil {
++			return err
++		}
++		opts = append(opts, opt)
++	}
++
++	pool, err := dbpool.New(context.Background(), p.cfg, opts...)
+ 	if err != nil {
+ 		return fmt.Errorf("dbpool: %w", err)
+ 	}
+@@ -106,14 +119,29 @@ func (p *pgsql) UpgradeSchema() error {
+ 
+ // NewMigrator creates a golang-migrate instance. The scheme is "pgx5" because
+ // golang-migrate's pgx/v5 driver registers under that name (not "pgx", which
+-// is the v4 driver).
++// is the v4 driver). When IAM auth is enabled, a fresh token is generated
++// for the migration connection.
+ func NewMigrator(database *models.PostGreSQL) (*migrate.Migrate, error) {
++	password := database.Password
++	sslMode := database.SSLMode
++
++	if database.UseIAMAuth {
++		if sslMode == "" || sslMode == "disable" {
++			sslMode = "require"
++		}
++		token, err := iamMigrationToken(context.Background(), database)
++		if err != nil {
++			return nil, err
++		}
++		password = token
++	}
++
+ 	dbURL := url.URL{
+ 		Scheme:   "pgx5",
+-		User:     url.UserPassword(database.Username, database.Password),
++		User:     url.UserPassword(database.Username, password),
+ 		Host:     net.JoinHostPort(database.Host, strconv.Itoa(database.Port)),
+ 		Path:     database.Database,
+-		RawQuery: fmt.Sprintf("sslmode=%s", database.SSLMode),
++		RawQuery: fmt.Sprintf("sslmode=%s", sslMode),
+ 	}
+ 
+ 	// For UT
+diff --git a/src/common/dao/pgsql_iam.go b/src/common/dao/pgsql_iam.go
+new file mode 100644
+index 000000000..0cdbf217a
+--- /dev/null
++++ b/src/common/dao/pgsql_iam.go
+@@ -0,0 +1,110 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package dao
++
++import (
++	"context"
++	"fmt"
++	"net"
++	"os"
++	"strconv"
++	"time"
++
++	awsconfig "github.com/aws/aws-sdk-go-v2/config"
++	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgxpool"
++
++	"github.com/goharbor/harbor/src/common/models"
++	"github.com/goharbor/harbor/src/lib/dbpool"
++	"github.com/goharbor/harbor/src/lib/log"
++)
++
++// iamAuthMaxConnLifetime caps connection lifetime below the 15-minute
++// IAM token expiry so connections are recycled with fresh tokens.
++const iamAuthMaxConnLifetime = 14 * time.Minute
++
++// iamAuthOption returns a dbpool.Option that configures a BeforeConnect hook
++// to generate a fresh AWS RDS IAM auth token for each new connection. It also
++// caps MaxConnLifetime to 14 minutes (tokens expire at 15).
++//
++// AWS config is loaded eagerly so misconfiguration is caught at startup.
++func iamAuthOption(ctx context.Context, cfg *models.PostGreSQL) (dbpool.Option, error) {
++	region := resolveAWSRegion(cfg.AWSRegion)
++	if region == "" {
++		return nil, fmt.Errorf("IAM auth: AWS region is required (set POSTGRESQL_AWS_REGION or AWS_REGION)")
++	}
++
++	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
++	if err != nil {
++		return nil, fmt.Errorf("IAM auth: load AWS config: %w", err)
++	}
++
++	endpoint := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
++	username := cfg.Username
++
++	return func(poolCfg *pgxpool.Config) {
++		if poolCfg.MaxConnLifetime == 0 || poolCfg.MaxConnLifetime > iamAuthMaxConnLifetime {
++			poolCfg.MaxConnLifetime = iamAuthMaxConnLifetime
++		}
++
++		poolCfg.BeforeConnect = func(ctx context.Context, connCfg *pgx.ConnConfig) error {
++			token, err := auth.BuildAuthToken(ctx, endpoint, region, username, awsCfg.Credentials)
++			if err != nil {
++				return fmt.Errorf("IAM auth: build token: %w", err)
++			}
++			connCfg.Password = token
++			log.Debugf("IAM Auth: Token refreshed for %s@%s", username, endpoint)
++			return nil
++		}
++
++		log.Infof("IAM Auth: Enabled for region=%s endpoint=%s user=%s", region, endpoint, username)
++	}, nil
++}
++
++// iamMigrationToken generates a single IAM token for golang-migrate,
++// which opens its own connection outside of pgxpool.
++func iamMigrationToken(ctx context.Context, cfg *models.PostGreSQL) (string, error) {
++	region := resolveAWSRegion(cfg.AWSRegion)
++	if region == "" {
++		return "", fmt.Errorf("IAM auth: AWS region is required for migration")
++	}
++
++	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
++	if err != nil {
++		return "", fmt.Errorf("IAM auth: load AWS config for migration: %w", err)
++	}
++
++	endpoint := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
++	token, err := auth.BuildAuthToken(ctx, endpoint, region, cfg.Username, awsCfg.Credentials)
++	if err != nil {
++		return "", fmt.Errorf("IAM auth: build migration token: %w", err)
++	}
++
++	log.Infof("IAM Auth: Token generated for database migration")
++	return token, nil
++}
++
++// resolveAWSRegion returns the configured region, falling back to standard
++// AWS environment variables if not explicitly set.
++func resolveAWSRegion(configured string) string {
++	if configured != "" {
++		return configured
++	}
++	if r := os.Getenv("AWS_REGION"); r != "" {
++		return r
++	}
++	return os.Getenv("AWS_DEFAULT_REGION")
++}
+diff --git a/src/common/dao/pgsql_iam_test.go b/src/common/dao/pgsql_iam_test.go
+new file mode 100644
+index 000000000..cbd5698ec
+--- /dev/null
++++ b/src/common/dao/pgsql_iam_test.go
+@@ -0,0 +1,192 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package dao
++
++import (
++	"testing"
++	"time"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++
++	"github.com/goharbor/harbor/src/common/models"
++)
++
++func TestResolveAWSRegion(t *testing.T) {
++	tests := []struct {
++		name       string
++		configured string
++		envRegion  string
++		envDefault string
++		want       string
++	}{
++		{
++			name:       "explicit config takes precedence",
++			configured: "eu-west-1",
++			envRegion:  "us-east-1",
++			envDefault: "ap-south-1",
++			want:       "eu-west-1",
++		},
++		{
++			name:       "falls back to AWS_REGION",
++			configured: "",
++			envRegion:  "us-east-1",
++			envDefault: "ap-south-1",
++			want:       "us-east-1",
++		},
++		{
++			name:       "falls back to AWS_DEFAULT_REGION",
++			configured: "",
++			envRegion:  "",
++			envDefault: "ap-south-1",
++			want:       "ap-south-1",
++		},
++		{
++			name:       "returns empty when nothing set",
++			configured: "",
++			envRegion:  "",
++			envDefault: "",
++			want:       "",
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			t.Setenv("AWS_REGION", tt.envRegion)
++			t.Setenv("AWS_DEFAULT_REGION", tt.envDefault)
++
++			got := resolveAWSRegion(tt.configured)
++			if got != tt.want {
++				t.Errorf("resolveAWSRegion(%q) = %q, want %q", tt.configured, got, tt.want)
++			}
++		})
++	}
++}
++
++func TestIamAuthOption_MissingRegion(t *testing.T) {
++	t.Setenv("AWS_REGION", "")
++	t.Setenv("AWS_DEFAULT_REGION", "")
++
++	cfg := &models.PostGreSQL{
++		Host:       "localhost",
++		Port:       5432,
++		Username:   "test",
++		AWSRegion:  "",
++		UseIAMAuth: true,
++	}
++
++	_, err := iamAuthOption(t.Context(), cfg)
++	if err == nil {
++		t.Fatal("expected error when no AWS region is resolvable, got nil")
++	}
++}
++
++func TestIamAuthOption_CapLifetime(t *testing.T) {
++	t.Setenv("AWS_REGION", "us-east-1")
++
++	cfg := &models.PostGreSQL{
++		Host:       "mydb.rds.amazonaws.com",
++		Port:       5432,
++		Username:   "harbor_iam_user",
++		AWSRegion:  "us-east-1",
++		UseIAMAuth: true,
++	}
++
++	opt, err := iamAuthOption(t.Context(), cfg)
++	if err != nil {
++		t.Fatalf("iamAuthOption: %v", err)
++	}
++
++	poolCfg := &pgxpool.Config{}
++	poolCfg.MaxConnLifetime = 30 * time.Minute
++	opt(poolCfg)
++
++	if poolCfg.MaxConnLifetime != iamAuthMaxConnLifetime {
++		t.Errorf("MaxConnLifetime = %v, want %v", poolCfg.MaxConnLifetime, iamAuthMaxConnLifetime)
++	}
++}
++
++func TestIamAuthOption_PreserveShorterLifetime(t *testing.T) {
++	t.Setenv("AWS_REGION", "us-east-1")
++
++	cfg := &models.PostGreSQL{
++		Host:       "mydb.rds.amazonaws.com",
++		Port:       5432,
++		Username:   "harbor_iam_user",
++		AWSRegion:  "us-east-1",
++		UseIAMAuth: true,
++	}
++
++	opt, err := iamAuthOption(t.Context(), cfg)
++	if err != nil {
++		t.Fatalf("iamAuthOption: %v", err)
++	}
++
++	shorter := 5 * time.Minute
++	poolCfg := &pgxpool.Config{}
++	poolCfg.MaxConnLifetime = shorter
++	opt(poolCfg)
++
++	if poolCfg.MaxConnLifetime != shorter {
++		t.Errorf("MaxConnLifetime = %v, want %v (should preserve shorter lifetime)", poolCfg.MaxConnLifetime, shorter)
++	}
++}
++
++func TestNewPGSQL_IAMForceSSL(t *testing.T) {
++	cfg := &models.PostGreSQL{
++		Host:       "localhost",
++		Port:       5432,
++		Username:   "test",
++		SSLMode:    "disable",
++		UseIAMAuth: true,
++	}
++
++	db := NewPGSQL(cfg)
++	p := db.(*pgsql)
++	if p.cfg.SSLMode != "require" {
++		t.Errorf("SSLMode = %q, want %q when IAM auth is enabled", p.cfg.SSLMode, "require")
++	}
++}
++
++func TestNewPGSQL_IAMPreserveSSL(t *testing.T) {
++	cfg := &models.PostGreSQL{
++		Host:       "localhost",
++		Port:       5432,
++		Username:   "test",
++		SSLMode:    "verify-full",
++		UseIAMAuth: true,
++	}
++
++	db := NewPGSQL(cfg)
++	p := db.(*pgsql)
++	if p.cfg.SSLMode != "verify-full" {
++		t.Errorf("SSLMode = %q, want %q (should not downgrade)", p.cfg.SSLMode, "verify-full")
++	}
++}
++
++func TestNewPGSQL_NoIAMNoSSLForce(t *testing.T) {
++	cfg := &models.PostGreSQL{
++		Host:       "localhost",
++		Port:       5432,
++		Username:   "test",
++		SSLMode:    "disable",
++		UseIAMAuth: false,
++	}
++
++	db := NewPGSQL(cfg)
++	p := db.(*pgsql)
++	if p.cfg.SSLMode != "disable" {
++		t.Errorf("SSLMode = %q, want %q when IAM auth is disabled", p.cfg.SSLMode, "disable")
++	}
++}
+diff --git a/src/common/models/database.go b/src/common/models/database.go
+index 7da9b776a..b76538b21 100644
+--- a/src/common/models/database.go
++++ b/src/common/models/database.go
+@@ -39,4 +39,6 @@ type PostGreSQL struct {
+ 	ConnectTimeout    time.Duration `json:"connect_timeout"`
+ 	MinConns          int32         `json:"min_conns"`
+ 	URL               string        `json:"url"`
++	UseIAMAuth        bool          `json:"use_iam_auth"`
++	AWSRegion         string        `json:"aws_region,omitempty"`
+ }
+diff --git a/src/go.mod b/src/go.mod
+index 6642e8558..6853f6e08 100644
+--- a/src/go.mod
++++ b/src/go.mod
+@@ -98,6 +98,21 @@ require (
+ 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
+ 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
+ 	github.com/Unknwon/goconfig v0.0.0-20160216183935-5f601ca6ef4d // indirect
++	github.com/aws/aws-sdk-go-v2 v1.41.5 // indirect
++	github.com/aws/aws-sdk-go-v2/config v1.32.14 // indirect
++	github.com/aws/aws-sdk-go-v2/credentials v1.19.14 // indirect
++	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 // indirect
++	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.6.21 // indirect
++	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
++	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
++	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.6 // indirect
++	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 // indirect
++	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21 // indirect
++	github.com/aws/aws-sdk-go-v2/service/signin v1.0.9 // indirect
++	github.com/aws/aws-sdk-go-v2/service/sso v1.30.15 // indirect
++	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.19 // indirect
++	github.com/aws/aws-sdk-go-v2/service/sts v1.41.10 // indirect
++	github.com/aws/smithy-go v1.24.2 // indirect
+ 	github.com/benbjohnson/clock v1.3.0 // indirect
+ 	github.com/beorn7/perks v1.0.1 // indirect
+ 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+diff --git a/src/go.sum b/src/go.sum
+index eed39486e..674ed7efd 100644
+--- a/src/go.sum
++++ b/src/go.sum
+@@ -62,6 +62,36 @@ github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2/go.mod h1:W
+ github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
+ github.com/aws/aws-sdk-go v1.55.8 h1:JRmEUbU52aJQZ2AjX4q4Wu7t4uZjOu71uyNmaWlUkJQ=
+ github.com/aws/aws-sdk-go v1.55.8/go.mod h1:ZkViS9AqA6otK+JBBNH2++sx1sgxrPKcSzPPvQkUtXk=
++github.com/aws/aws-sdk-go-v2 v1.41.5 h1:dj5kopbwUsVUVFgO4Fi5BIT3t4WyqIDjGKCangnV/yY=
++github.com/aws/aws-sdk-go-v2 v1.41.5/go.mod h1:mwsPRE8ceUUpiTgF7QmQIJ7lgsKUPQOUl3o72QBrE1o=
++github.com/aws/aws-sdk-go-v2/config v1.32.14 h1:opVIRo/ZbbI8OIqSOKmpFaY7IwfFUOCCXBsUpJOwDdI=
++github.com/aws/aws-sdk-go-v2/config v1.32.14/go.mod h1:U4/V0uKxh0Tl5sxmCBZ3AecYny4UNlVmObYjKuuaiOo=
++github.com/aws/aws-sdk-go-v2/credentials v1.19.14 h1:n+UcGWAIZHkXzYt87uMFBv/l8THYELoX6gVcUvgl6fI=
++github.com/aws/aws-sdk-go-v2/credentials v1.19.14/go.mod h1:cJKuyWB59Mqi0jM3nFYQRmnHVQIcgoxjEMAbLkpr62w=
++github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 h1:NUS3K4BTDArQqNu2ih7yeDLaS3bmHD0YndtA6UP884g=
++github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21/go.mod h1:YWNWJQNjKigKY1RHVJCuupeWDrrHjRqHm0N9rdrWzYI=
++github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.6.21 h1:HFn8sVT87KWnGs2Q2gO/brPZc2bR0RXD++cYKRmABzk=
++github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.6.21/go.mod h1:BGZ/K6gLGJt8K36j6gcsD7WVxmWt0MGBYtr57iLweio=
++github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 h1:Rgg6wvjjtX8bNHcvi9OnXWwcE0a2vGpbwmtICOsvcf4=
++github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21/go.mod h1:A/kJFst/nm//cyqonihbdpQZwiUhhzpqTsdbhDdRF9c=
++github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 h1:PEgGVtPoB6NTpPrBgqSE5hE/o47Ij9qk/SEZFbUOe9A=
++github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21/go.mod h1:p+hz+PRAYlY3zcpJhPwXlLC4C+kqn70WIHwnzAfs6ps=
++github.com/aws/aws-sdk-go-v2/internal/ini v1.8.6 h1:qYQ4pzQ2Oz6WpQ8T3HvGHnZydA72MnLuFK9tJwmrbHw=
++github.com/aws/aws-sdk-go-v2/internal/ini v1.8.6/go.mod h1:O3h0IK87yXci+kg6flUKzJnWeziQUKciKrLjcatSNcY=
++github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 h1:5EniKhLZe4xzL7a+fU3C2tfUN4nWIqlLesfrjkuPFTY=
++github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7/go.mod h1:x0nZssQ3qZSnIcePWLvcoFisRXJzcTVvYpAAdYX8+GI=
++github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21 h1:c31//R3xgIJMSC8S6hEVq+38DcvUlgFY0FM6mSI5oto=
++github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21/go.mod h1:r6+pf23ouCB718FUxaqzZdbpYFyDtehyZcmP5KL9FkA=
++github.com/aws/aws-sdk-go-v2/service/signin v1.0.9 h1:QKZH0S178gCmFEgst8hN0mCX1KxLgHBKKY/CLqwP8lg=
++github.com/aws/aws-sdk-go-v2/service/signin v1.0.9/go.mod h1:7yuQJoT+OoH8aqIxw9vwF+8KpvLZ8AWmvmUWHsGQZvI=
++github.com/aws/aws-sdk-go-v2/service/sso v1.30.15 h1:lFd1+ZSEYJZYvv9d6kXzhkZu07si3f+GQ1AaYwa2LUM=
++github.com/aws/aws-sdk-go-v2/service/sso v1.30.15/go.mod h1:WSvS1NLr7JaPunCXqpJnWk1Bjo7IxzZXrZi1QQCkuqM=
++github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.19 h1:dzztQ1YmfPrxdrOiuZRMF6fuOwWlWpD2StNLTceKpys=
++github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.19/go.mod h1:YO8TrYtFdl5w/4vmjL8zaBSsiNp3w0L1FfKVKenZT7w=
++github.com/aws/aws-sdk-go-v2/service/sts v1.41.10 h1:p8ogvvLugcR/zLBXTXrTkj0RYBUdErbMnAFFp12Lm/U=
++github.com/aws/aws-sdk-go-v2/service/sts v1.41.10/go.mod h1:60dv0eZJfeVXfbT1tFJinbHrDfSJ2GZl4Q//OSSNAVw=
++github.com/aws/smithy-go v1.24.2 h1:FzA3bu/nt/vDvmnkg+R8Xl46gmzEDam6mZ1hzmwXFng=
++github.com/aws/smithy-go v1.24.2/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
+ github.com/beego/beego/v2 v2.3.8 h1:wplhB1pF4TxR+2SS4PUej8eDoH4xGfxuHfS7wAk9VBc=
+ github.com/beego/beego/v2 v2.3.8/go.mod h1:8vl9+RrXqvodrl9C8yivX1e6le6deCK6RWeq8R7gTTg=
+ github.com/beego/i18n v0.0.0-20140604031826-e87155e8f0c0 h1:fQaDnUQvBXHHQdGBu9hz8nPznB4BeiPQokvmQVjmNEw=
+diff --git a/src/lib/config/metadata/metadatalist.go b/src/lib/config/metadata/metadatalist.go
+index 3d8a3526f..35c303525 100644
+--- a/src/lib/config/metadata/metadatalist.go
++++ b/src/lib/config/metadata/metadatalist.go
+@@ -117,6 +117,8 @@ var (
+ 		{Name: common.PostGreSQLConnectTimeout, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_CONNECT_TIMEOUT", DefaultValue: "10s", ItemType: &DurationType{}, Editable: false},
+ 		{Name: common.PostGreSQLMinConns, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_MIN_CONNS", DefaultValue: "2", ItemType: &IntType{}, Editable: false},
+ 		{Name: common.PostGreSQLURL, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_URL", DefaultValue: "", ItemType: &StringType{}, Editable: false},
++		{Name: common.PostGreSQLUseIAMAuth, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_USE_IAM_AUTH", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: "Enable AWS RDS IAM authentication"},
++		{Name: common.PostGreSQLAWSRegion, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_AWS_REGION", DefaultValue: "", ItemType: &StringType{}, Editable: false, Description: "AWS region for RDS IAM authentication"},
+ 
+ 		{Name: common.ProjectCreationRestriction, Scope: UserScope, Group: BasicGroup, EnvKey: "PROJECT_CREATION_RESTRICTION", DefaultValue: common.ProCrtRestrEveryone, ItemType: &ProjectCreationRestrictionType{}, Editable: false, Description: `Indicate who can create projects, it could be ''adminonly'' or ''everyone''.`},
+ 		{Name: common.ReadOnly, Scope: UserScope, Group: BasicGroup, EnvKey: "READ_ONLY", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: `The flag to indicate whether Harbor is in readonly mode.`},
+diff --git a/src/lib/config/systemconfig.go b/src/lib/config/systemconfig.go
+index 649a336ce..53e86e198 100644
+--- a/src/lib/config/systemconfig.go
++++ b/src/lib/config/systemconfig.go
+@@ -268,7 +268,9 @@ func Database() (*models.Database, error) {
+ 		HealthCheckPeriod: DefaultMgr().Get(backgroundCtx, common.PostGreSQLHealthCheckPeriod).GetDuration(),
+ 		ConnectTimeout:    DefaultMgr().Get(backgroundCtx, common.PostGreSQLConnectTimeout).GetDuration(),
+ 		MinConns:          int32(DefaultMgr().Get(backgroundCtx, common.PostGreSQLMinConns).GetInt()),
+-		URL: DefaultMgr().Get(backgroundCtx, common.PostGreSQLURL).GetString(),
++		URL:               DefaultMgr().Get(backgroundCtx, common.PostGreSQLURL).GetString(),
++		UseIAMAuth:        DefaultMgr().Get(backgroundCtx, common.PostGreSQLUseIAMAuth).GetBool(),
++		AWSRegion:         DefaultMgr().Get(backgroundCtx, common.PostGreSQLAWSRegion).GetString(),
+ 	}
+ 	database.PostGreSQL = postgresql
+ 
+diff --git a/src/pkg/config/manager.go b/src/pkg/config/manager.go
+index 1854e0ac4..84ef93a74 100644
+--- a/src/pkg/config/manager.go
++++ b/src/pkg/config/manager.go
+@@ -173,7 +173,9 @@ func (c *CfgManager) GetDatabaseCfg() *models.Database {
+ 			HealthCheckPeriod: c.Get(ctx, common.PostGreSQLHealthCheckPeriod).GetDuration(),
+ 			ConnectTimeout:    c.Get(ctx, common.PostGreSQLConnectTimeout).GetDuration(),
+ 			MinConns:          int32(c.Get(ctx, common.PostGreSQLMinConns).GetInt()),
+-			URL: c.Get(ctx, common.PostGreSQLURL).GetString(),
++			URL:               c.Get(ctx, common.PostGreSQLURL).GetString(),
++			UseIAMAuth:        c.Get(ctx, common.PostGreSQLUseIAMAuth).GetBool(),
++			AWSRegion:         c.Get(ctx, common.PostGreSQLAWSRegion).GetString(),
+ 		},
+ 	}
+ }
