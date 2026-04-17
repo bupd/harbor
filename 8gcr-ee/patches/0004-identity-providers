@@ -5,13 +5,10 @@ From: bupd <bupdprasanth@gmail.com>
 
 ---
  api/v2.0/swagger.yaml                              |  552 +++++
- .../img/fedidp-project-robot-1-click-new-robot.png |  Bin
- .../fedidp-project-robot-8-federated-checkbox.png  |  Bin
- .../fedidp-project-robot-9-checkbox-enabled.png    |  Bin
  .../0172_8gears_identity_providers.up.sql          |   46 
  .../postgresql/0173_jwks_cache_schema.up.sql       |    9 
  src/common/const.go                                |    3 
- src/common/rbac/const.go                           |   23 
+ src/common/rbac/const.go                           |   13 
  src/common/rbac/project/rbac_role.go               |    6 
  src/controller/federatedidp/controller.go          |  380 +++
  src/controller/federatedidp/model.go               |   25 
@@ -34,13 +31,13 @@ From: bupd <bupdprasanth@gmail.com>
  .../config/entreprise/entreprise.component.scss    |   16 
  .../config/entreprise/entreprise.component.spec.ts |   98 +
  .../config/entreprise/entreprise.component.ts      |  178 ++
- .../create-edit-idp/create-edit-idp.component.html |  292 +++
+ .../create-edit-idp/create-edit-idp.component.html |  291 +++
  .../create-edit-idp/create-edit-idp.component.scss |  110 +
  .../create-edit-idp/create-edit-idp.component.ts   | 1510 +++++++++++++
  .../federated-idps/idp.component.html              |  137 +
  .../federated-idps/idp.component.scss              |   63 +
- .../federated-idps/idp.component.spec.ts           |   13 
- .../left-side-nav/federated-idps/idp.component.ts  |  325 +++
+ .../federated-idps/idp.component.spec.ts           |   62 +
+ .../left-side-nav/federated-idps/idp.component.ts  |  317 +++
  .../left-side-nav/federated-idps/idp.module.ts     |   33 
  .../new-robot/new-robot.component.html             |  210 ++
  .../new-robot/new-robot.component.scss             |   21 
@@ -48,7 +45,7 @@ From: bupd <bupdprasanth@gmail.com>
  .../new-robot/new-robot.component.ts               |  835 +++++++
  .../system-robot-accounts.component.html           |    4 
  .../system-robot-accounts.component.ts             |   26 
- .../federated-idp/add-idp/add-idp.component.html   |  292 +++
+ .../federated-idp/add-idp/add-idp.component.html   |  291 +++
  .../federated-idp/add-idp/add-idp.component.scss   |  110 +
  .../federated-idp/add-idp/add-idp.component.ts     | 1387 ++++++++++++
  .../federated-idp/federated-idp.component.html     |  139 +
@@ -66,12 +63,13 @@ From: bupd <bupdprasanth@gmail.com>
  .../robot-account/robot-account.component.spec.ts  |  282 +++
  .../robot-account/robot-account.component.ts       |  113 +
  .../view-token/view-token.component.html           |   80 +
- .../components/view-token/view-token.component.ts  |  129 +
+ .../components/view-token/view-token.component.ts  |   57 -
  .../app/shared/services/federated-idp.service.ts   |  299 +++
  src/portal/src/app/shared/services/index.ts        |    1 
  .../src/app/shared/services/permission-static.ts   |   10 
+ src/portal/src/app/shared/shared.module.ts         |    3 
  src/portal/src/i18n/lang/de-de-lang.json           |    5 
- src/portal/src/i18n/lang/en-us-lang.json           |   50 
+ src/portal/src/i18n/lang/en-us-lang.json           |   49 
  src/portal/src/i18n/lang/es-es-lang.json           |    5 
  src/portal/src/i18n/lang/fr-fr-lang.json           |    5 
  src/portal/src/i18n/lang/ko-kr-lang.json           |    5 
@@ -97,7 +95,7 @@ From: bupd <bupdprasanth@gmail.com>
  src/server/v2.0/handler/robot.go                   |  113 +
  src/server/v2.0/handler/robot_test.go              |  134 +
  src/server/v2.0/handler/systeminfo.go              |    1 
- 17 files changed, 21059 insertions(+), 52 deletions(-)
+ 91 files changed, 17207 insertions(+), 50 deletions(-)
  create mode 100644 make/migrations/postgresql/0172_8gears_identity_providers.up.sql
  create mode 100644 make/migrations/postgresql/0173_jwks_cache_schema.up.sql
  create mode 100644 src/controller/federatedidp/controller.go
@@ -751,7 +749,7 @@ index 97b87ee39..0040f3363 100644
      properties:
 diff --git a/make/migrations/postgresql/0172_8gears_identity_providers.up.sql b/make/migrations/postgresql/0172_8gears_identity_providers.up.sql
 new file mode 100644
-index 000000000..096d6d0fd
+index 000000000..b64964564
 --- /dev/null
 +++ b/make/migrations/postgresql/0172_8gears_identity_providers.up.sql
 @@ -0,0 +1,46 @@
@@ -769,7 +767,7 @@ index 000000000..096d6d0fd
 +    claims_supported TEXT,
 +    jwks_uri TEXT,
 +    jwks_keys JSONB,
-+    project_id INT NOT NULL,
++    project_id INT NOT NULL REFERENCES project(project_id) ON DELETE CASCADE,
 +    creation_time TIMESTAMP DEFAULT NOW(),
 +    update_time TIMESTAMP DEFAULT NOW(),
 +    UNIQUE (issuer, project_id)
@@ -793,7 +791,7 @@ index 000000000..096d6d0fd
 +CREATE TABLE IF NOT EXISTS claim_rules (
 +    id SERIAL PRIMARY KEY,
 +    identity_provider_id INT NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
-+    robot_id INT NOT NULL,
++    robot_id INT NOT NULL REFERENCES robot(id) ON DELETE CASCADE,
 +    claim_path TEXT NOT NULL,
 +    value TEXT,
 +    creation_time TIMESTAMP DEFAULT NOW()
@@ -831,7 +829,7 @@ index b07f21f30..c75d6b324 100644
  	SessionTimeout = "session_timeout"
  
 diff --git a/src/common/rbac/const.go b/src/common/rbac/const.go
-index f23189db9..ea36b207c 100644
+index f23189db9..7a8180382 100644
 --- a/src/common/rbac/const.go
 +++ b/src/common/rbac/const.go
 @@ -70,6 +70,7 @@ const (
@@ -842,31 +840,7 @@ index f23189db9..ea36b207c 100644
  	ResourceReplication        = Resource("replication")
  	ResourceDistribution       = Resource("distribution")
  	ResourceGarbageCollection  = Resource("garbage-collection")
-@@ -119,6 +120,11 @@ type NolimitProvider struct {
- func (n *NolimitProvider) GetPermissions(s scope) []*types.Policy {
- 	if s == ScopeSystem {
- 		return append(n.BaseProvider.GetPermissions(ScopeSystem),
-+			&types.Policy{Resource: ResourceFederatedIdp, Action: ActionCreate},
-+			&types.Policy{Resource: ResourceFederatedIdp, Action: ActionRead},
-+			&types.Policy{Resource: ResourceFederatedIdp, Action: ActionList},
-+			&types.Policy{Resource: ResourceFederatedIdp, Action: ActionDelete},
-+
- 			&types.Policy{Resource: ResourceRobot, Action: ActionCreate},
- 			&types.Policy{Resource: ResourceRobot, Action: ActionRead},
- 			&types.Policy{Resource: ResourceRobot, Action: ActionList},
-@@ -143,6 +149,11 @@ func (n *NolimitProvider) GetPermissions(s scope) []*types.Policy {
- 	}
- 	if s == ScopeProject {
- 		return append(n.BaseProvider.GetPermissions(ScopeProject),
-+			&types.Policy{Resource: ResourceFederatedIdp, Action: ActionCreate},
-+			&types.Policy{Resource: ResourceFederatedIdp, Action: ActionRead},
-+			&types.Policy{Resource: ResourceFederatedIdp, Action: ActionList},
-+			&types.Policy{Resource: ResourceFederatedIdp, Action: ActionDelete},
-+
- 			&types.Policy{Resource: ResourceRobot, Action: ActionCreate},
- 			&types.Policy{Resource: ResourceRobot, Action: ActionRead},
- 			&types.Policy{Resource: ResourceRobot, Action: ActionList},
-@@ -192,6 +203,12 @@ var (
+@@ -192,6 +193,12 @@ var (
  			{Resource: ResourceRegistry, Action: ActionList},
  			{Resource: ResourceRegistry, Action: ActionUpdate},
  
@@ -879,7 +853,7 @@ index f23189db9..ea36b207c 100644
  			{Resource: ResourceScanAll, Action: ActionRead},
  			{Resource: ResourceScanAll, Action: ActionUpdate},
  			{Resource: ResourceScanAll, Action: ActionStop},
-@@ -236,6 +253,12 @@ var (
+@@ -236,6 +243,12 @@ var (
  		ScopeProject: {
  			{Resource: ResourceLog, Action: ActionList},
  
@@ -3627,7 +3601,7 @@ index efe2c8129..e04aa3c6d 100644
                              clrVerticalNavLink
                              routerLink="/harbor/replications"
 diff --git a/src/portal/src/app/base/left-side-nav/config/config.component.html b/src/portal/src/app/base/left-side-nav/config/config.component.html
-index 3019e95a4..73c0cbe17 100644
+index 3019e95a4..e994c994d 100644
 --- a/src/portal/src/app/base/left-side-nav/config/config.component.html
 +++ b/src/portal/src/app/base/left-side-nav/config/config.component.html
 @@ -47,6 +47,16 @@
@@ -3641,7 +3615,7 @@ index 3019e95a4..73c0cbe17 100644
 +                    type="button"
 +                    routerLink="entreprise"
 +                    routerLinkActive="active">
-+                    {{ 'CONFIG.ENTREPRISE' | translate }}
++                    {{ 'CONFIG.ENTERPRISE' | translate }}
 +                </button>
 +            </li>
          </ul>
@@ -3865,7 +3839,7 @@ index 000000000..ee5b37c84
 +});
 diff --git a/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.ts b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.ts
 new file mode 100644
-index 000000000..aec888a72
+index 000000000..a16f90b90
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/config/entreprise/entreprise.component.ts
 @@ -0,0 +1,178 @@
@@ -3964,7 +3938,7 @@ index 000000000..aec888a72
 +                prop.startsWith('uaa_') ||
 +                prop.startsWith('oidc_') ||
 +                prop === 'auth_mode' ||
-+                prop === 'project_creattion_restriction' ||
++                prop === 'project_creation_restriction' ||
 +                prop === 'enable_project_federated_idp' ||
 +                prop === 'projectFedIdp' ||
 +                prop.startsWith('http_')
@@ -4049,10 +4023,10 @@ index 000000000..aec888a72
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.html b/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.html
 new file mode 100644
-index 000000000..595c644d0
+index 000000000..da2f37cce
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/create-edit-idp/create-edit-idp.component.html
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,291 @@
 +<clr-modal
 +    [(clrModalOpen)]="createEditIdpOpened"
 +    [clrModalStaticBackdrop]="staticBackdrop"
@@ -4123,7 +4097,6 @@ index 000000000..595c644d0
 +                    {{ 'FEDERATED_IDPS.OPENIDCONFIG_URL' | translate }}
 +                </label>
 +                <div
-+                    disabled="target.offline_validation"
 +                    class="clr-control-container"
 +                    [class.clr-error]="
 +                        openidConfigUrl?.errors &&
@@ -4234,7 +4207,7 @@ index 000000000..595c644d0
 +            <!-- Mannual OpenIDConfig -->
 +            <clr-textarea-container>
 +                <label [class.required]="target.offline_validation">{{
-+                    'FEDERATED_IDPS.MANNUAL_OPENIDCONFIG' | translate
++                    'FEDERATED_IDPS.MANUAL_OPENIDCONFIG' | translate
 +                }}</label>
 +                <textarea
 +                    clrTextarea
@@ -6191,10 +6164,10 @@ index 000000000..02bcbfc87
 +}
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.spec.ts b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.spec.ts
 new file mode 100644
-index 000000000..059161f81
+index 000000000..798ebc9af
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.spec.ts
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,62 @@
 +// Copyright Project Harbor Authors
 +//
 +// Licensed under the Apache License, Version 2.0 (the "License");
@@ -6208,12 +6181,61 @@ index 000000000..059161f81
 +// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 +// See the License for the specific language governing permissions and
 +// limitations under the License.
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { NO_ERRORS_SCHEMA } from '@angular/core';
++import { of } from 'rxjs';
++import { IdpComponent } from './idp.component';
++import { CreateEditIdpComponent } from './create-edit-idp/create-edit-idp.component';
++import { FederatedIdpService } from 'ng-swagger-gen/services';
++import { FederatedIdp } from 'ng-swagger-gen/models';
++import { SharedTestingModule } from '../../../shared/shared.module';
++import { ErrorHandler } from '../../../shared/units/error-handler';
++import { OperationService } from '../../../shared/components/operation/operation.service';
++
++describe('IdpComponent', () => {
++    const mockIdps: FederatedIdp[] = [
++        { id: 1, name: 'idp-one', issuer: 'https://issuer.example.com' },
++    ];
++    const mockIdpService = {
++        ListFederatedIdps: () => of(mockIdps),
++        DeleteFederatedIdp: () => of(null),
++    };
++
++    let fixture: ComponentFixture<IdpComponent>;
++    let component: IdpComponent;
++
++    beforeEach(async () => {
++        await TestBed.configureTestingModule({
++            imports: [SharedTestingModule],
++            declarations: [IdpComponent, CreateEditIdpComponent],
++            providers: [
++                ErrorHandler,
++                OperationService,
++                { provide: FederatedIdpService, useValue: mockIdpService },
++            ],
++            schemas: [NO_ERRORS_SCHEMA],
++        }).compileComponents();
++
++        fixture = TestBed.createComponent(IdpComponent);
++        component = fixture.componentInstance;
++    });
++
++    it('should create', () => {
++        expect(component).toBeTruthy();
++    });
++
++    it('should load IdPs from the service on refresh', () => {
++        component.refreshTargets();
++        expect(component.targets.length).toBe(1);
++        expect(component.targets[0].name).toBe('idp-one');
++    });
++});
 diff --git a/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.ts b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.ts
 new file mode 100644
-index 000000000..7508a18d7
+index 000000000..a19af19c4
 --- /dev/null
 +++ b/src/portal/src/app/base/left-side-nav/federated-idps/idp.component.ts
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,317 @@
 +// Copyright Project Harbor Authors
 +//
 +// Licensed under the Apache License, Version 2.0 (the "License");
@@ -6271,19 +6293,11 @@ index 000000000..7508a18d7
 +import { errorHandler } from '../../../shared/units/shared.utils';
 +import { ConfirmationMessage } from '../../global-confirmation-dialog/confirmation-message';
 +import { ConfirmationAcknowledgement } from '../../global-confirmation-dialog/confirmation-state-message';
-+// TODO:use idp service
-+import { EndpointService } from '../../../shared/services/endpoint.service';
-+// TODO:remove the registry service
-+import { RegistryService } from '../../../../../ng-swagger-gen/services/registry.service';
 +import { ClrDatagridStateInterface } from '@clr/angular';
-+import { Registry } from '../../../../../ng-swagger-gen/models/registry';
 +import { FederatedIdp } from 'ng-swagger-gen/models';
 +import { FederatedIdpService } from 'ng-swagger-gen/services';
 +import { CreateEditIdpComponent } from './create-edit-idp/create-edit-idp.component';
 +
-+// @Injectable({
-+//     providedIn: 'root',
-+// })
 +@Component({
 +    selector: 'federated-idps',
 +    templateUrl: './idp.component.html',
@@ -6340,7 +6354,7 @@ index 000000000..7508a18d7
 +        private idpService: FederatedIdpService,
 +        private errorHandlerEntity: ErrorHandler,
 +        private translateService: TranslateService,
-+        private operationService: OperationService // private oldEndpointService: EndpointService
++        private operationService: OperationService
 +    ) {}
 +
 +    ngOnInit(): void {
@@ -6429,7 +6443,7 @@ index 000000000..7508a18d7
 +        this.target = this.initIdp;
 +    }
 +
-+    editTargets(targets: Registry[]) {
++    editTargets(targets: FederatedIdp[]) {
 +        if (targets && targets.length === 1) {
 +            let target = targets[0];
 +            let editable = true;
@@ -6441,15 +6455,15 @@ index 000000000..7508a18d7
 +        }
 +    }
 +
-+    deleteTargets(targets: Registry[]) {
++    deleteTargets(targets: FederatedIdp[]) {
 +        if (targets && targets.length) {
 +            let targetNames: string[] = [];
 +            targets.forEach(target => {
 +                targetNames.push(target.name);
 +            });
 +            let deletionMessage = new ConfirmationMessage(
-+                'REPLICATION.DELETION_TITLE_TARGET',
-+                'REPLICATION.DELETION_SUMMARY_TARGET',
++                'FEDERATED_IDPS.DELETION_TITLE',
++                'FEDERATED_IDPS.DELETION_SUMMARY',
 +                targetNames.join(', ') || '',
 +                targets,
 +                ConfirmationTargets.TARGET,
@@ -6465,7 +6479,7 @@ index 000000000..7508a18d7
 +            message.source === ConfirmationTargets.TARGET &&
 +            message.state === ConfirmationState.CONFIRMED
 +        ) {
-+            let targetLists: Registry[] = message.data;
++            let targetLists: FederatedIdp[] = message.data;
 +            if (targetLists && targetLists.length) {
 +                let observableLists: any[] = [];
 +                targetLists.forEach(target => {
@@ -6486,10 +6500,10 @@ index 000000000..7508a18d7
 +            }
 +        }
 +    }
-+    delOperate(target: Registry): Observable<any> {
++    delOperate(target: FederatedIdp): Observable<any> {
 +        // init operation info
 +        let operMessage = new OperateInfo();
-+        operMessage.name = 'OPERATION.DELETE_REGISTRY';
++        operMessage.name = 'OPERATION.DELETE_IDP';
 +        operMessage.data.id = target.id;
 +        operMessage.state = OperationState.progressing;
 +        operMessage.data.name = target.name;
@@ -6579,7 +6593,7 @@ index 000000000..1abe54a55
 +})
 +export class IdpModule {}
 diff --git a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.html b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.html
-index 0112e887e..015d572c8 100644
+index 0112e887e..3fbede3ba 100644
 --- a/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.html
 +++ b/src/portal/src/app/base/left-side-nav/system-robot-accounts/new-robot/new-robot.component.html
 @@ -242,6 +242,216 @@
@@ -6674,7 +6688,7 @@ index 0112e887e..015d572c8 100644
 +                        *ngIf="
 +                            (fedidpControl.dirty || fedidpControl.touched) &&
 +                            !fedidpControl.hasError('required') &&
-+                            !isValidIdp(selection)
++                            !isValidIdp(idpSelection)
 +                        ">
 +                        Please select a valid federated IDP from the list.
 +                    </clr-control-error>
@@ -7904,10 +7918,10 @@ index 5a0d6fa22..3e09c5135 100644
              this.pageSize = state.page.size;
 diff --git a/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.html b/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.html
 new file mode 100644
-index 000000000..f56f3bfbd
+index 000000000..7d9c6236d
 --- /dev/null
 +++ b/src/portal/src/app/base/project/federated-idp/add-idp/add-idp.component.html
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,291 @@
 +<clr-modal
 +    [(clrModalOpen)]="createEditIdpOpened"
 +    [clrModalStaticBackdrop]="staticBackdrop"
@@ -7978,7 +7992,6 @@ index 000000000..f56f3bfbd
 +                    {{ 'FEDERATED_IDPS.OPENIDCONFIG_URL' | translate }}
 +                </label>
 +                <div
-+                    disabled="target.offline_validation"
 +                    class="clr-control-container"
 +                    [class.clr-error]="
 +                        openidConfigUrl?.errors &&
@@ -8089,7 +8102,7 @@ index 000000000..f56f3bfbd
 +            <!-- Manual OpenIDConfig -->
 +            <clr-textarea-container>
 +                <label [class.required]="target.offline_validation">{{
-+                    'FEDERATED_IDPS.MANNUAL_OPENIDCONFIG' | translate
++                    'FEDERATED_IDPS.MANUAL_OPENIDCONFIG' | translate
 +                }}</label>
 +                <textarea
 +                    clrTextarea
@@ -12451,26 +12464,10 @@ index e4f2d2684..f5b195832 100644
      </div>
  </clr-modal>
 diff --git a/src/portal/src/app/shared/components/view-token/view-token.component.ts b/src/portal/src/app/shared/components/view-token/view-token.component.ts
-index 5627b7aa0..5cb905462 100644
+index 5627b7aa0..c1eedbc0c 100644
 --- a/src/portal/src/app/shared/components/view-token/view-token.component.ts
 +++ b/src/portal/src/app/shared/components/view-token/view-token.component.ts
-@@ -11,7 +11,14 @@
- // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- // See the License for the specific language governing permissions and
- // limitations under the License.
--import { Component, EventEmitter, Output, ViewChild } from '@angular/core';
-+import {
-+    Component,
-+    EventEmitter,
-+    OnChanges,
-+    OnInit,
-+    Output,
-+    ViewChild,
-+} from '@angular/core';
- import { RobotService } from '../../../../../ng-swagger-gen/services/robot.service';
- import { ClrLoadingState } from '@clr/angular';
- import { Robot } from '../../../../../ng-swagger-gen/models/robot';
-@@ -29,17 +36,42 @@ import { TranslateService } from '@ngx-translate/core';
+@@ -29,6 +29,7 @@ import { TranslateService } from '@ngx-translate/core';
  import { InlineAlertComponent } from '../inline-alert/inline-alert.component';
  import { errorHandler } from '../../units/shared.utils';
  import { CopyInputComponent } from '../push-image/copy-input.component';
@@ -12478,11 +12475,7 @@ index 5627b7aa0..5cb905462 100644
  
  @Component({
      selector: 'view-token',
-     templateUrl: './view-token.component.html',
-     styleUrls: ['./view-token.component.scss'],
- })
--export class ViewTokenComponent {
-+export class ViewTokenComponent implements OnChanges {
+@@ -39,7 +40,31 @@ export class ViewTokenComponent {
      showNewPwd: boolean = false;
      showConfirmPwd: boolean = false;
      tokenModalOpened: boolean = false;
@@ -12515,16 +12508,10 @@ index 5627b7aa0..5cb905462 100644
      newSecret: string;
      confirmSecret: string;
      btnState: ClrLoadingState = ClrLoadingState.DEFAULT;
-@@ -55,8 +87,16 @@ export class ViewTokenComponent {
+@@ -55,8 +80,10 @@ export class ViewTokenComponent {
      downLoadFileName: string = '';
      downLoadHref: SafeUrl = '';
      enableNewSecret: boolean = false;
-+
-+    ngOnChanges(): void {
-+        if (this.robot?.federatedidp_id > 0) {
-+            this.fetchClaimsForRobot(this.robot.federatedidp_id, this.robot.id);
-+        }
-+    }
 +
      constructor(
          private robotService: RobotService,
@@ -12532,7 +12519,7 @@ index 5627b7aa0..5cb905462 100644
          private operationService: OperationService,
          private msgHandler: MessageHandlerService,
          private sanitizer: DomSanitizer,
-@@ -78,6 +118,7 @@ export class ViewTokenComponent {
+@@ -78,6 +105,7 @@ export class ViewTokenComponent {
          this.downLoadFileName = '';
          this.downLoadHref = '';
          this.secretForm.reset();
@@ -12540,7 +12527,7 @@ index 5627b7aa0..5cb905462 100644
      }
      refreshToken() {
          this.btnState = ClrLoadingState.LOADING;
-@@ -105,7 +146,8 @@ export class ViewTokenComponent {
+@@ -105,7 +133,8 @@ export class ViewTokenComponent {
                      this.refreshSuccess.emit(true);
                      this.cancel();
                      if (res && res.secret) {
@@ -12550,7 +12537,7 @@ index 5627b7aa0..5cb905462 100644
                          this.copyToken = true;
                          this.createSuccess =
                              'SYSTEM_ROBOT.REFRESH_SECRET_SUCCESS';
-@@ -160,6 +202,85 @@ export class ViewTokenComponent {
+@@ -160,6 +189,30 @@ export class ViewTokenComponent {
                  this.msgHandler.showSuccess(res);
              });
      }
@@ -12559,74 +12546,19 @@ index 5627b7aa0..5cb905462 100644
 +     * with async callbacks where this.robot might not be set yet
 +     */
 +    fetchClaimsForRobot(idpID: number, robotId: number) {
-+        console.log(
-+            '[fetchClaims] Fetching claims for idpID:',
-+            idpID,
-+            'robotId:',
-+            robotId
-+        );
-+
-+        // Early return if robotId is undefined or invalid
 +        if (robotId === undefined || robotId === null || isNaN(robotId)) {
-+            console.warn('[fetchClaims] Invalid robotId, skipping fetch');
 +            return;
 +        }
-+
 +        this.idpService.ListClaimRules({ id: idpID }).subscribe(
 +            claimRules => {
-+                console.log(
-+                    '[fetchClaims] Total claims received:',
-+                    claimRules?.length
-+                );
-+                console.log(
-+                    '[fetchClaims] All claims:',
-+                    JSON.stringify(claimRules, null, 2)
-+                );
-+
-+                // Inherited claims are from IDP (robot_id is 0, null, or undefined)
++                // Inherited claims are IdP-scoped (robot_id is 0, null, or undefined).
 +                this.inheritedClaims = claimRules
 +                    .filter(c => !c.robot_id || c.robot_id === 0)
-+                    .map(c => ({
-+                        path: c.claim_path,
-+                        value: c.value,
-+                    }));
-+
-+                // Robot-specific claims (robot_id matches current robot)
-+                // Using + to convert to number to handle any string/number type mismatch
++                    .map(c => ({ path: c.claim_path, value: c.value }));
++                // Robot-scoped claims: coerce to number to tolerate string/number drift.
 +                this.claims = claimRules
-+                    .filter(c => {
-+                        if (!c.robot_id || c.robot_id <= 0) {
-+                            return false;
-+                        }
-+                        const claimRobotIdNum = +c.robot_id;
-+                        const robotIdNum = +robotId;
-+                        const matches = claimRobotIdNum === robotIdNum;
-+                        console.log(
-+                            `[fetchClaims] Checking claim robot_id=${c.robot_id} (${claimRobotIdNum}) vs robotId=${robotId} (${robotIdNum}): ${matches}`
-+                        );
-+                        return matches;
-+                    })
-+                    .map(c => ({
-+                        path: c.claim_path,
-+                        value: c.value,
-+                    }));
-+
-+                console.log(
-+                    '[fetchClaims] inheritedClaims count:',
-+                    this.inheritedClaims?.length
-+                );
-+                console.log(
-+                    '[fetchClaims] robotClaims count:',
-+                    this.claims?.length
-+                );
-+                console.log(
-+                    '[fetchClaims] inheritedClaims:',
-+                    JSON.stringify(this.inheritedClaims, null, 2)
-+                );
-+                console.log(
-+                    '[fetchClaims] robotClaims:',
-+                    JSON.stringify(this.claims, null, 2)
-+                );
++                    .filter(c => c.robot_id && +c.robot_id === +robotId)
++                    .map(c => ({ path: c.claim_path, value: c.value }));
 +            },
 +            error => {
 +                this.inlineAlertComponent.showInlineError(error);
@@ -12638,7 +12570,7 @@ index 5627b7aa0..5cb905462 100644
          this.copyToken = false;
 diff --git a/src/portal/src/app/shared/services/federated-idp.service.ts b/src/portal/src/app/shared/services/federated-idp.service.ts
 new file mode 100644
-index 000000000..201372dfe
+index 000000000..87394b148
 --- /dev/null
 +++ b/src/portal/src/app/shared/services/federated-idp.service.ts
 @@ -0,0 +1,299 @@
@@ -12668,12 +12600,12 @@ index 000000000..201372dfe
 +import { catchError, map } from 'rxjs/operators';
 +import { FederatedIdp } from 'ng-swagger-gen/models';
 +
-+@Injectable({
-+    providedIn: 'root', // recommended way
-+})
-+
 +/**
 + * Define the service methods to handle Federated Identity Provider (IdP) related operations.
++ *
++ * Abstract base — concrete implementation {@link FederatedIdpDefaultService} is
++ * bound via the `SharedModule` providers. Angular DI cannot instantiate an
++ * abstract class, so `providedIn: 'root'` is intentionally not set here.
 + *
 + * @abstract
 + * class FederatedIdpService
@@ -12971,6 +12903,27 @@ index bc9c862e3..0ec5aea61 100644
      ROBOT: {
          KEY: 'robot',
          VALUE: {
+diff --git a/src/portal/src/app/shared/shared.module.ts b/src/portal/src/app/shared/shared.module.ts
+index 75e175ba7..3d8afe704 100644
+--- a/src/portal/src/app/shared/shared.module.ts
++++ b/src/portal/src/app/shared/shared.module.ts
+@@ -32,6 +32,8 @@ import { SearchResultComponent } from './components/global-search/search-result.
+ import { GlobalSearchComponent } from './components/global-search/global-search.component';
+ import { AboutDialogComponent } from './components/about-dialog/about-dialog.component';
+ import {
++    FederatedIdpDefaultService,
++    FederatedIdpService,
+     LabelDefaultService,
+     LabelService,
+     ProjectDefaultService,
+@@ -249,6 +251,7 @@ ClarityIcons.add({
+         { provide: ReplicationService, useClass: ReplicationDefaultService },
+         { provide: LabelService, useClass: LabelDefaultService },
+         { provide: SystemInfoService, useClass: SystemInfoDefaultService },
++        { provide: FederatedIdpService, useClass: FederatedIdpDefaultService },
+         {
+             provide: ScanningResultService,
+             useClass: ScanningResultDefaultService,
 diff --git a/src/portal/src/i18n/lang/de-de-lang.json b/src/portal/src/i18n/lang/de-de-lang.json
 index bff91c16a..7b4303cbb 100644
 --- a/src/portal/src/i18n/lang/de-de-lang.json
@@ -12995,7 +12948,7 @@ index bff91c16a..7b4303cbb 100644
          "REPLICATION_TRIGGER": "Trigger",
          "PUSH_BASED_ONLY": "Only for the push-based replication",
 diff --git a/src/portal/src/i18n/lang/en-us-lang.json b/src/portal/src/i18n/lang/en-us-lang.json
-index 00142411f..6553c7389 100644
+index 00142411f..3ee2cc449 100644
 --- a/src/portal/src/i18n/lang/en-us-lang.json
 +++ b/src/portal/src/i18n/lang/en-us-lang.json
 @@ -16,6 +16,7 @@
@@ -13043,7 +12996,7 @@ index 00142411f..6553c7389 100644
      },
      "WEBHOOK": {
          "ENABLED_BUTTON": "ENABLE",
-@@ -501,6 +509,37 @@
+@@ -501,6 +509,36 @@
          "RESOURCE_TYPE": "Resource Type",
          "DOWNLOAD": "Download"
      },
@@ -13059,8 +13012,7 @@ index 00142411f..6553c7389 100644
 +        "OFFLINE_VALIDATION_TOOLTIP": "Skip remote validation and use provided JWKS instead",
 +        "SUPPORTED_ALGORITHMS": "Supported Algorithms",
 +        "NEW_IDP": "New Identity Provider",
-+        "UPDATED_SUCCESS": "Updated identity provider successfully",
-+        "CREATED_SUCCESS": "Created identity provider successfully",
++        "CREATED_SUCCESS": "Created identity provider successfully.",
 +        "UPDATED_SUCCESS": "Updated identity provider successfully.",
 +        "DELETED_SUCCESS": "Deleted identity provider successfully.",
 +        "DELETED_FAILED": "Deleted identity provider failed.",
@@ -13070,7 +13022,7 @@ index 00142411f..6553c7389 100644
 +        "TITLE_ADD": "New Identity Provider",
 +        "OPENIDCONFIG_URL": "Discovery URL",
 +        "OPENIDCONFIG_URL_REQUIRED": "Discovery URL is required",
-+        "MANNUAL_OPENIDCONFIG": "OIDC Configuration",
++        "MANUAL_OPENIDCONFIG": "OIDC Configuration",
 +        "JWKS_URI": "JWKS URI",
 +        "JWKS_URI_REQUIRED": "JWKS URI is required",
 +        "JWKS_KEYS": "JWKS",
@@ -13081,16 +13033,16 @@ index 00142411f..6553c7389 100644
      "REPLICATION": {
          "REPLICATION_TRIGGER": "Trigger",
          "PUSH_BASED_ONLY": "Only for the push-based replication",
-@@ -775,6 +814,8 @@
+@@ -775,6 +813,8 @@
          "REPO_READ_ONLY": "Repository Read Only",
          "SYSTEM": "System Settings",
          "BRANDING": "Branding",
-+        "ENTREPRISE": "Entreprise",
++        "ENTERPRISE": "Enterprise",
 +        "PROJECT_FEDIDP": "Enable Identity Providers for Projects",
          "PROJECT_QUOTAS": "Project Quotas",
          "VULNERABILITY": "Vulnerability",
          "GC": "Garbage Collection",
-@@ -808,6 +849,7 @@
+@@ -808,6 +848,7 @@
          "NO_CHANGE": "Save abort because nothing changed",
          "SKIP_SCANNER_PULL_TIME": "Retain Image \"last pull time\" On Scanning",
          "TOOLTIP": {
@@ -13098,7 +13050,7 @@ index 00142411f..6553c7389 100644
              "SELF_REGISTRATION_ENABLE": "Enable sign up.",
              "SELF_REGISTRATION_DISABLE": "Deactivate sign up.",
              "VERIFY_REMOTE_CERT": "Determine whether image replication should verify the certificate for a remote registry. Uncheck this box to skip verifying the remote registry endpoint certificate.",
-@@ -1187,6 +1229,7 @@
+@@ -1187,6 +1228,7 @@
          "ADD_GROUP": "Add group member",
          "ADD_USER": "Add user member",
          "DELETE_LABEL": "Delete label",
@@ -13106,7 +13058,7 @@ index 00142411f..6553c7389 100644
          "REPLICATION": "Replication",
          "DAY_AGO": " day(s) ago",
          "HOUR_AGO": " hour(s) ago",
-@@ -1633,6 +1676,10 @@
+@@ -1633,6 +1675,10 @@
          "PAGE_SIZE": "Page size"
      },
      "SYSTEM_ROBOT": {
@@ -13117,7 +13069,7 @@ index 00142411f..6553c7389 100644
          "READ": "Read",
          "CREATE": "Create",
          "ARTIFACT": "Artifact",
-@@ -1702,6 +1749,7 @@
+@@ -1702,6 +1748,7 @@
          "FINAL_SYSTEM_NAME_TIP": "The final system robot name consists of the prefix and the current input value",
          "PUSH_AND_PULL": "Push",
          "PUSH_PERMISSION_TOOLTIP": "Push permission can not work alone, it must work with pull permission",
