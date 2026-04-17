@@ -1483,7 +1483,7 @@ ON claim_rules (identity_provider_id, claim_path, value, robot_id);
 | `src/pkg/federatedidp/dao/dao.go` | Database operations, claim matching |
 | `src/pkg/federatedidp/model/model.go` | Data models |
 | `src/server/middleware/security/robotjwt.go` | JWT auth middleware |
-| `make/migrations/postgresql/0172_8gears_cr_schema.up.sql` | DB schema |
+| `make/migrations/postgresql/0172_8gears_identity_providers.up.sql` | DB schema |
 | `api/v2.0/swagger.yaml` | OpenAPI specification |
 
 ---

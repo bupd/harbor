@@ -79,7 +79,7 @@ From: bupd <bupdprasanth@gmail.com>
  docs/img/fedidp-system-9-claim-value.png           |  Bin
  docs/jwks-key-rotation.md                          |  682 ++++++
  docs/tutorial-federated-idp.md                     |  612 +++++
- .../postgresql/0172_8gears_cr_schema.up.sql        |   46 
+ .../0172_8gears_identity_providers.up.sql          |   46 
  .../postgresql/0173_jwks_cache_schema.up.sql       |    9 
  src/common/const.go                                |    3 
  src/common/rbac/const.go                           |   23 
@@ -245,7 +245,7 @@ From: bupd <bupdprasanth@gmail.com>
  create mode 100644 docs/img/fedidp-system-9-claim-value.png
  create mode 100644 docs/jwks-key-rotation.md
  create mode 100644 docs/tutorial-federated-idp.md
- create mode 100644 make/migrations/postgresql/0172_8gears_cr_schema.up.sql
+ create mode 100644 make/migrations/postgresql/0172_8gears_identity_providers.up.sql
  create mode 100644 make/migrations/postgresql/0173_jwks_cache_schema.up.sql
  create mode 100644 src/controller/federatedidp/controller.go
  create mode 100644 src/controller/federatedidp/model.go
@@ -900,7 +900,7 @@ index 97b87ee39..0040f3363 100644
      properties:
 diff --git a/docs/ADR-federated-idp.md b/docs/ADR-federated-idp.md
 new file mode 100644
-index 000000000..b7cba2f16
+index 000000000..f7df9ee75
 --- /dev/null
 +++ b/docs/ADR-federated-idp.md
 @@ -0,0 +1,1728 @@
@@ -2389,7 +2389,7 @@ index 000000000..b7cba2f16
 +| `src/pkg/federatedidp/dao/dao.go` | Database operations, claim matching |
 +| `src/pkg/federatedidp/model/model.go` | Data models |
 +| `src/server/middleware/security/robotjwt.go` | JWT auth middleware |
-+| `make/migrations/postgresql/0172_8gears_cr_schema.up.sql` | DB schema |
++| `make/migrations/postgresql/0172_8gears_identity_providers.up.sql` | DB schema |
 +| `api/v2.0/swagger.yaml` | OpenAPI specification |
 +
 +---
@@ -154017,11 +154017,11 @@ index 000000000..5dbeef0b0
 +| `robot is disabled` | Robot account disabled | Enable robot in UI |
 +
 +> **Debug tip**: Decode JWT at [jwt.io](https://jwt.io) to inspect claims (non-sensitive tokens only).
-diff --git a/make/migrations/postgresql/0172_8gears_cr_schema.up.sql b/make/migrations/postgresql/0172_8gears_cr_schema.up.sql
+diff --git a/make/migrations/postgresql/0172_8gears_identity_providers.up.sql b/make/migrations/postgresql/0172_8gears_identity_providers.up.sql
 new file mode 100644
 index 000000000..096d6d0fd
 --- /dev/null
-+++ b/make/migrations/postgresql/0172_8gears_cr_schema.up.sql
++++ b/make/migrations/postgresql/0172_8gears_identity_providers.up.sql
 @@ -0,0 +1,46 @@
 +-- Table: identity_providers
 +-- Stores federated identity providers
