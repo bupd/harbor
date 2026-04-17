@@ -1,6 +1,7 @@
-# This series applies on Git commit 907c8e45dacd2b433c4e529a199dbb4c3f0ac40c
+# This series applies on Git commit ddea74f855a3650fe402f97e47a204b635ab023a
 0001-branding
 0002-hybrid-auth-multi
 0003-sftp-replication
 0004-identity-providers
+0005-pgx-monitoring
 0006-aws-rds-iam-auth

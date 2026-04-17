@@ -1,0 +1,2273 @@
+feat(observability): add pgx database monitoring with OTel metrics
+
+From: Prasanth Baskar <bupdprasanth@gmail.com>
+
+Add OpenTelemetry-based database observability for pgxpool connections.
+Includes query tracing, pool status metrics (idle/total/acquired conns),
+and Prometheus metric export via OTel-to-Prometheus bridge.
+
+Uses the dbpool.Option extension point from the OSS pgx/v5 migration
+to inject monitoring without modifying pool.go.
+
+From: Vadim Bauer <vb@8gears.com>
+---
+ devenv/docker-compose.yml                          |    2 
+ src/cmd/exporter/main.go                           |    5 
+ src/common/const.go                                |    5 
+ src/common/dao/pgsql.go                            |   18 +
+ src/common/models/database.go                      |    1 
+ src/core/main.go                                   |   20 +
+ src/go.mod                                         |   13 +
+ src/go.sum                                         |   47 +--
+ src/jobservice/main.go                             |   11 +
+ src/jobservice/runtime/bootstrap.go                |    3 
+ src/lib/config/metadata/metadatalist.go            |    1 
+ src/lib/config/systemconfig.go                     |    3 
+ src/lib/dbpool/metrics.go                          |   63 +++++
+ src/lib/dbpool/metrics_test.go                     |   60 ++++
+ src/lib/dbpool/pool.go                             |    6 
+ src/lib/dbpool/pool_integration_test.go            |    1 
+ src/lib/metric/otel.go                             |   74 +++++
+ src/lib/metric/otel_test.go                        |   84 ++++++
+ src/local/sqlc-pgx-monitoring/LICENSE              |   21 ++
+ src/local/sqlc-pgx-monitoring/dbtracer/consts.go   |   17 +
+ src/local/sqlc-pgx-monitoring/dbtracer/dbtracer.go |  271 ++++++++++++++++++++
+ src/local/sqlc-pgx-monitoring/dbtracer/options.go  |   90 +++++++
+ .../sqlc-pgx-monitoring/dbtracer/queryname.go      |   21 ++
+ .../sqlc-pgx-monitoring/dbtracer/traceacquire.go   |   76 ++++++
+ .../sqlc-pgx-monitoring/dbtracer/tracebatch.go     |  136 ++++++++++
+ .../sqlc-pgx-monitoring/dbtracer/traceconnect.go   |   74 +++++
+ .../sqlc-pgx-monitoring/dbtracer/tracecopyfrom.go  |   79 ++++++
+ .../sqlc-pgx-monitoring/dbtracer/traceprepare.go   |  100 +++++++
+ .../sqlc-pgx-monitoring/dbtracer/tracequery.go     |  106 ++++++++
+ .../sqlc-pgx-monitoring/dbtracer/tracerelease.go   |   17 +
+ src/local/sqlc-pgx-monitoring/go.mod               |   24 ++
+ src/local/sqlc-pgx-monitoring/go.sum               |   43 +++
+ src/local/sqlc-pgx-monitoring/main.go              |    3 
+ .../sqlc-pgx-monitoring/poolstatus/pgxpoolotel.go  |  240 ++++++++++++++++++
+ src/pkg/config/manager.go                          |    3 
+ taskfile/dev.yml                                   |    3 
+ 36 files changed, 1689 insertions(+), 52 deletions(-)
+ create mode 100644 src/lib/dbpool/metrics.go
+ create mode 100644 src/lib/dbpool/metrics_test.go
+ create mode 100644 src/lib/metric/otel.go
+ create mode 100644 src/lib/metric/otel_test.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/LICENSE
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/consts.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/dbtracer.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/options.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/queryname.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/traceacquire.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/tracebatch.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/traceconnect.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/tracecopyfrom.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/traceprepare.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/tracequery.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/dbtracer/tracerelease.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/go.mod
+ create mode 100644 src/local/sqlc-pgx-monitoring/go.sum
+ create mode 100644 src/local/sqlc-pgx-monitoring/main.go
+ create mode 100644 src/local/sqlc-pgx-monitoring/poolstatus/pgxpoolotel.go
+
+diff --git a/devenv/docker-compose.yml b/devenv/docker-compose.yml
+index aec59e281..bf1c59861 100644
+--- a/devenv/docker-compose.yml
++++ b/devenv/docker-compose.yml
+@@ -66,6 +66,7 @@ services:
+       - ../src/core/views:/app/views:ro
+     ports:
+       - "${PORT_CORE:-8080}:8080"
++      - "${PORT_METRIC:-9090}:9090"
+       # - "127.0.0.1:${PORT_DEBUG_CORE:-2345}:2345"  # Debug port (uncomment if needed)
+     environment:
+       # Database
+@@ -89,6 +90,7 @@ services:
+       CORE_URL: http://core:8080
+       HARBOR_ADMIN_PASSWORD: Harbor12345
+       CACHE_ENABLED: "false"
++      METRIC_ENABLE: "true"
+       LOG_LEVEL: debug
+       # Token signing key
+       TOKEN_PRIVATE_KEY_PATH: devenv/token_service_key.pem
+diff --git a/src/cmd/exporter/main.go b/src/cmd/exporter/main.go
+index dcde312d8..614b931c9 100644
+--- a/src/cmd/exporter/main.go
++++ b/src/cmd/exporter/main.go
+@@ -56,6 +56,11 @@ func main() {
+ 			HealthCheckPeriod: viper.GetDuration("database.health_check_period"),
+ 			ConnectTimeout:    viper.GetDuration("database.connect_timeout"),
+ 			MinConns:          int32(viper.GetInt("database.min_conns")),
++			// Exporter does not initialize an OTel MeterProvider and serves its
++			// own Prometheus registry (not the default one used by the OTel
++			// Prometheus exporter), so enabling pgx metrics here would attach
++			// them to a no-op meter and they'd never be scraped. Keep off.
++			MetricsEnabled: false,
+ 		},
+ 	}
+ 	if err := dao.InitDatabase(dbCfg); err != nil {
+diff --git a/src/common/const.go b/src/common/const.go
+index c75d6b324..017e0bf37 100644
+--- a/src/common/const.go
++++ b/src/common/const.go
+@@ -65,8 +65,9 @@ const (
+ 	PostGreSQLHealthCheckPeriod      = "postgresql_health_check_period"
+ 	PostGreSQLConnectTimeout         = "postgresql_connect_timeout"
+ 	PostGreSQLMinConns               = "postgresql_min_conns"
+-	PostGreSQLURL    = "postgresql_url"
+-	SelfRegistration = "self_registration"
++	PostGreSQLURL                    = "postgresql_url"
++	PostGreSQLMetricsEnabled         = "postgresql_metrics_enabled"
++	SelfRegistration                 = "self_registration"
+ 	CoreURL                          = "core_url"
+ 	CoreLocalURL                     = "core_local_url"
+ 	JobServiceURL                    = "jobservice_url"
+diff --git a/src/common/dao/pgsql.go b/src/common/dao/pgsql.go
+index 0694970ce..ba862f237 100644
+--- a/src/common/dao/pgsql.go
++++ b/src/common/dao/pgsql.go
+@@ -65,11 +65,27 @@ func (p *pgsql) Register(alias ...string) error {
+ 		}
+ 	}
+ 
+-	pool, err := dbpool.New(context.Background(), p.cfg)
++	var opts []dbpool.Option
++	if p.cfg.MetricsEnabled {
++		tracer, err := dbpool.NewTracer(p.cfg.Database)
++		if err != nil {
++			return fmt.Errorf("dbpool: %w", err)
++		}
++		opts = append(opts, dbpool.WithTracer(tracer))
++	}
++
++	pool, err := dbpool.New(context.Background(), p.cfg, opts...)
+ 	if err != nil {
+ 		return fmt.Errorf("dbpool: %w", err)
+ 	}
+ 
++	if p.cfg.MetricsEnabled {
++		if err := dbpool.RegisterPoolMetrics(pool.PgxPool()); err != nil {
++			pool.Close()
++			return fmt.Errorf("dbpool: %w", err)
++		}
++	}
++
+ 	if err := pool.RegisterWithOrm(alias...); err != nil {
+ 		pool.Close()
+ 		return err
+diff --git a/src/common/models/database.go b/src/common/models/database.go
+index 7da9b776a..3f3d86dd0 100644
+--- a/src/common/models/database.go
++++ b/src/common/models/database.go
+@@ -39,4 +39,5 @@ type PostGreSQL struct {
+ 	ConnectTimeout    time.Duration `json:"connect_timeout"`
+ 	MinConns          int32         `json:"min_conns"`
+ 	URL               string        `json:"url"`
++	MetricsEnabled    bool          `json:"metrics_enabled"`
+ }
+diff --git a/src/core/main.go b/src/core/main.go
+index 663670ea9..00c2d5cc6 100644
+--- a/src/core/main.go
++++ b/src/core/main.go
+@@ -185,6 +185,16 @@ func main() {
+ 	web.BConfig.MaxMemory = config.GetBeegoMaxMemoryBytes()
+ 	web.BConfig.MaxUploadSize = config.GetBeegoMaxUploadSizeBytes()
+ 
++	database, err := config.Database()
++	if err != nil {
++		log.Fatalf("failed to get database configuration: %v", err)
++	}
++	if database.PostGreSQL != nil && database.PostGreSQL.MetricsEnabled {
++		if err := metric.InitMeterProvider(); err != nil {
++			log.Fatalf("init meter provider: %v", err)
++		}
++	}
++
+ 	metricCfg := config.Metric()
+ 	if metricCfg.Enabled {
+ 		metric.RegisterCollectors()
+@@ -194,10 +204,6 @@ func main() {
+ 	config.InitTraceConfig(ctx)
+ 	shutdownTracerProvider := tracelib.InitGlobalTracer(ctx)
+ 	token.InitCreators()
+-	database, err := config.Database()
+-	if err != nil {
+-		log.Fatalf("failed to get database configuration: %v", err)
+-	}
+ 	if err := dao.InitDatabase(database); err != nil {
+ 		log.Fatalf("failed to initialize database: %v", err)
+ 	}
+@@ -256,7 +262,11 @@ func main() {
+ 
+ 	closing := make(chan struct{})
+ 	done := make(chan struct{})
+-	go gracefulShutdown(closing, done, shutdownTracerProvider, dao.ClosePool)
++	go gracefulShutdown(closing, done, shutdownTracerProvider, func() {
++		if err := metric.ShutdownMeterProvider(context.Background()); err != nil {
++			log.Warningf("shutdown meter provider: %v", err)
++		}
++	}, dao.ClosePool)
+ 	// Start health checker for registries
+ 	go registry.Ctl.StartRegularHealthCheck(orm.Context(), closing, done)
+ 	// Init audit log
+diff --git a/src/go.mod b/src/go.mod
+index 6642e8558..fd72112b0 100644
+--- a/src/go.mod
++++ b/src/go.mod
+@@ -17,6 +17,7 @@ require (
+ 	github.com/cenkalti/backoff/v4 v4.3.0
+ 	github.com/cloudevents/sdk-go/v2 v2.16.1
+ 	github.com/coreos/go-oidc/v3 v3.15.0
++	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+ 	github.com/dghubble/sling v1.4.2
+ 	github.com/docker/distribution v2.8.3+incompatible
+ 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7
+@@ -43,6 +44,7 @@ require (
+ 	github.com/jackc/pgx/v5 v5.8.0
+ 	github.com/jpillora/backoff v1.0.0
+ 	github.com/klauspost/compress v1.18.1 // indirect
++	github.com/lestrrat-go/jwx/v3 v3.0.11
+ 	github.com/modelpack/model-spec v0.0.7
+ 	github.com/ncw/swift v1.0.49 // indirect
+ 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
+@@ -81,8 +83,12 @@ require (
+ 	k8s.io/apimachinery v0.34.2
+ 	k8s.io/client-go v0.34.1
+ 	sigs.k8s.io/yaml v1.6.0
+-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+-	github.com/lestrrat-go/jwx/v3 v3.0.11
++)
++
++require (
++	github.com/amirsalarsafaei/sqlc-pgx-monitoring v1.7.2
++	go.opentelemetry.io/otel/exporters/prometheus v0.54.0
++	go.opentelemetry.io/otel/sdk/metric v1.43.0
+ )
+ 
+ require (
+@@ -102,7 +108,6 @@ require (
+ 	github.com/beorn7/perks v1.0.1 // indirect
+ 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+ 	github.com/containerd/stargz-snapshotter/estargz v0.18.1 // indirect
+-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+ 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
+ 	github.com/denverdino/aliyungo v0.0.0-20191227032621-df38c6fa730c // indirect
+ 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+@@ -155,7 +160,6 @@ require (
+ 	github.com/lestrrat-go/httprc/v3 v3.0.1 // indirect
+ 	github.com/lestrrat-go/option v1.0.1 // indirect
+ 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
+-	github.com/lib/pq v1.10.9 // indirect
+ 	github.com/magiconair/properties v1.8.7 // indirect
+ 	github.com/mailru/easyjson v0.9.0 // indirect
+ 	github.com/mattn/go-runewidth v0.0.9 // indirect
+@@ -222,6 +226,7 @@ require github.com/pkg/sftp v1.13.7
+ 
+ replace (
+ 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
++	github.com/amirsalarsafaei/sqlc-pgx-monitoring => ./local/sqlc-pgx-monitoring
+ 	github.com/docker/distribution => github.com/distribution/distribution v2.8.2+incompatible
+ 	github.com/gocraft/work => github.com/goharbor/work v0.5.1-patch
+ 	github.com/goharbor/harbor => ../
+diff --git a/src/go.sum b/src/go.sum
+index eed39486e..09ea8823c 100644
+--- a/src/go.sum
++++ b/src/go.sum
+@@ -213,8 +213,6 @@ github.com/gocarina/gocsv v0.0.0-20210516172204-ca9e8a8ddea8 h1:hp1oqdzmv37vPLYF
+ github.com/gocarina/gocsv v0.0.0-20210516172204-ca9e8a8ddea8/go.mod h1:5YoVOkjYAQumqlV356Hj3xeYh4BdZuLE0/nRkf2NKkI=
+ github.com/goccy/go-json v0.10.3 h1:KZ5WoDbxAIgm2HNbYckL0se1fHD6rz5j4ywS6ebzDqA=
+ github.com/goccy/go-json v0.10.3/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
+-github.com/gofrs/uuid v4.0.0+incompatible h1:1SD/1F5pU8p29ybwgQSwpQk+mwdRrXCYuPhW6m+TnJw=
+-github.com/gofrs/uuid v4.0.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
+ github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
+ github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
+ github.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=
+@@ -339,7 +337,6 @@ github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+o
+ github.com/klauspost/compress v1.18.1 h1:bcSGx7UbpBqMChDtsF28Lw6v/G94LPrrbMbdC3JH2co=
+ github.com/klauspost/compress v1.18.1/go.mod h1:ZQFFVG+MdnR0P+l6wpXgIL4NTtwiKIdBnrBd8Nrxr+0=
+ github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
+-github.com/konsorten/go-windows-terminal-sequences v1.0.2/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
+ github.com/kr/fs v0.1.0 h1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=
+ github.com/kr/fs v0.1.0/go.mod h1:FFnZGqtBN9Gxj7eW1uZ42v5BccTP0vu6NEaFoC2HwRg=
+ github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515/go.mod h1:+0opPa2QZZtGFBFZlji/RkVcI2GknAs/DXo4wKdlNEc=
+@@ -368,10 +365,6 @@ github.com/lestrrat-go/option v1.0.1 h1:oAzP2fvZGQKWkvHa1/SAcFolBEca1oN+mQ7eooNB
+ github.com/lestrrat-go/option v1.0.1/go.mod h1:5ZHFbivi4xwXxhxY9XHDe2FHo6/Z7WWmtT7T5nBBp3I=
+ github.com/lestrrat-go/option/v2 v2.0.0 h1:XxrcaJESE1fokHy3FpaQ/cXW8ZsIdWcdFzzLOcID3Ss=
+ github.com/lestrrat-go/option/v2 v2.0.0/go.mod h1:oSySsmzMoR0iRzCDCaUfsCzxQHUEuhOViQObyy7S6Vg=
+-github.com/lib/pq v1.0.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
+-github.com/lib/pq v1.1.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
+-github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
+-github.com/lib/pq v1.10.2/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+ github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
+ github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+ github.com/magiconair/properties v1.8.7 h1:IeQXZAiQcpL9mgcAe1Nu6cX9LLw6ExEHKjN0VQdvPDY=
+@@ -532,7 +525,6 @@ github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcY
+ github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+ github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+ github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+-github.com/zenazn/goji v0.9.0/go.mod h1:7S9M489iMyHBNxwZnk9/EHS098H4/F6TATF2mIxtB1Q=
+ go.mongodb.org/mongo-driver v1.17.6 h1:87JUG1wZfWsr6rIz3ZmpH90rL5tea7O3IHuSwHUpsss=
+ go.mongodb.org/mongo-driver v1.17.6/go.mod h1:Hy04i7O2kC4RS06ZrhPRqj/u4DTYkFDAAccj+rVKqgQ=
+ go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
+@@ -549,6 +541,8 @@ go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.34.0 h1:OeNbIYk/2C15ckl7glB
+ go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.34.0/go.mod h1:7Bept48yIeqxP2OZ9/AqIpYS94h2or0aB4FypJTc8ZM=
+ go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.34.0 h1:BEj3SPM81McUZHYjRS5pEgNgnmzGJ5tRpU5krWnV8Bs=
+ go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.34.0/go.mod h1:9cKLGBDzI/F3NoHLQGm4ZrYdIHsvGt6ej6hUowxY0J4=
++go.opentelemetry.io/otel/exporters/prometheus v0.54.0 h1:rFwzp68QMgtzu9PgP3jm9XaMICI6TsofWWPcBDKwlsU=
++go.opentelemetry.io/otel/exporters/prometheus v0.54.0/go.mod h1:QyjcV9qDP6VeK5qPyKETvNjmaaEc7+gqjh4SS0ZYzDU=
+ go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.38.0 h1:kJxSDN4SgWWTjG/hPp3O7LCGLcHXFlvS2/FFOrwL+SE=
+ go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.38.0/go.mod h1:mgIOzS7iZeKJdeB8/NYHrJ48fdGc71Llo5bJ1J4DWUE=
+ go.opentelemetry.io/otel/metric v1.43.0 h1:d7638QeInOnuwOONPp4JAOGfbCEpYb+K6DVWvdxGzgM=
+@@ -584,11 +578,9 @@ golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8U
+ golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
+ golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
+ golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
++golang.org/x/crypto v0.17.0/go.mod h1:gCAAfMLgwOJRpTjQ2zCCt2OcSfYMTeZVSRtQlPC7Nq4=
+ golang.org/x/crypto v0.46.0 h1:cKRW/pmt1pKAfetfu+RCEvjvZkA9RimPbh7bhFjGVBU=
+ golang.org/x/crypto v0.46.0/go.mod h1:Evb/oLKmMraqjZ2iQTwDwvCtJkczlDuTmdJXoZVzqU0=
+-golang.org/x/crypto v0.17.0/go.mod h1:gCAAfMLgwOJRpTjQ2zCCt2OcSfYMTeZVSRtQlPC7Nq4=
+-golang.org/x/crypto v0.45.0 h1:jMBrvKuj23MTlT0bQEOBcAE0mjg8mK9RXFhRH6nyF3Q=
+-golang.org/x/crypto v0.45.0/go.mod h1:XTGrrkGJve7CYK7J8PEww4aY7gM3qMCElcJQ8n8JdX4=
+ golang.org/x/exp v0.0.0-20180321215751-8460e604b9de/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
+ golang.org/x/exp v0.0.0-20180807140117-3d87b88a115f/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
+ golang.org/x/exp v0.0.0-20190121172915-509febef88a4/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
+@@ -623,13 +615,11 @@ golang.org/x/net v0.0.0-20200226121028-0de0cce0169b/go.mod h1:z5CRVTTTmAJ677TzLL
+ golang.org/x/net v0.0.0-20201021035429-f5854403a974/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
+ golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
+ golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2/go.mod h1:9nx3DQGgdP8bBQD5qxJ1jj9UTztislL4KSBs9R2vV5Y=
+-golang.org/x/net v0.48.0 h1:zyQRTTrjc33Lhh0fBgT/H3oZq9WuvRR5gPC70xpDiQU=
+-golang.org/x/net v0.48.0/go.mod h1:+ndRgGjkh8FGtu1w1FGbEC31if4VrNVMuKTgcAAnQRY=
+ golang.org/x/net v0.0.0-20220722155237-a158d28d115b/go.mod h1:XRhObCWvk6IyKnWLug+ECip1KBveYUHfp+8e9klMJ9c=
+ golang.org/x/net v0.6.0/go.mod h1:2Tu9+aMcznHK/AK1HMvgo6xiTLG5rD5rZLDS+rp2Bjs=
+ golang.org/x/net v0.10.0/go.mod h1:0qNGK6F8kojg2nk9dLZ2mShWaEBan6FAoqfSigmmuDg=
+-golang.org/x/net v0.47.0 h1:Mx+4dIFzqraBXUugkia1OOvlD6LemFo1ALMHjrXDOhY=
+-golang.org/x/net v0.47.0/go.mod h1:/jNxtkgq5yWUGYkaZGqo27cfGZ1c5Nen03aYrrKpVRU=
++golang.org/x/net v0.48.0 h1:zyQRTTrjc33Lhh0fBgT/H3oZq9WuvRR5gPC70xpDiQU=
++golang.org/x/net v0.48.0/go.mod h1:+ndRgGjkh8FGtu1w1FGbEC31if4VrNVMuKTgcAAnQRY=
+ golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
+ golang.org/x/oauth2 v0.34.0 h1:hqK/t4AKgbqWkdkcAeI8XLmbK+4m4G5YeQRrmiotGlw=
+ golang.org/x/oauth2 v0.34.0/go.mod h1:lzm5WQJQwKZ3nwavOZ3IS5Aulzxi68dUSgRHujetwEA=
+@@ -639,12 +629,10 @@ golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4/go.mod h1:RxMgew5VJxzue5/jJ
+ golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+ golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+ golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+-golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
+-golang.org/x/sync v0.19.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
+ golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+ golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+-golang.org/x/sync v0.18.0 h1:kr88TuHDroi+UVf+0hZnirlk8o8T+4MrK6mr60WkH/I=
+-golang.org/x/sync v0.18.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
++golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
++golang.org/x/sync v0.19.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
+ golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+ golang.org/x/sys v0.0.0-20180905080454-ebe1bf3edb33/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+ golang.org/x/sys v0.0.0-20181116152217-5ac8a444bdc5/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+@@ -658,37 +646,28 @@ golang.org/x/sys v0.0.0-20210423082822-04245dca01da/go.mod h1:h1NjWce9XRLGQEsW7w
+ golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.42.0 h1:omrd2nAlyT5ESRdCLYdm3+fMfNFE/+Rf4bDIQImRJeo=
+-golang.org/x/sys v0.42.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+-golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
+-golang.org/x/term v0.38.0 h1:PQ5pkm/rLO6HnxFR7N2lJHOZX6Kez5Y1gDSJla6jo7Q=
+-golang.org/x/term v0.38.0/go.mod h1:bSEAKrOT1W+VSu9TSCMtoGEOUcKxOKgl3LE5QEF/xVg=
+ golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.0.0-20220906165534-d0df966e6959/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.5.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.8.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.15.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+-golang.org/x/sys v0.38.0 h1:3yZWxaJjBmCWXqhN1qh02AkOnCQ1poK6oF+a7xWL6Gc=
+-golang.org/x/sys v0.38.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+-golang.org/x/term v0.0.0-20201117132131-f5c789dd3221/go.mod h1:Nr5EML6q2oocZ2LXRh80K7BxOlk5/8JxuGnuhpl+muw=
++golang.org/x/sys v0.42.0 h1:omrd2nAlyT5ESRdCLYdm3+fMfNFE/+Rf4bDIQImRJeo=
++golang.org/x/sys v0.42.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+ golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
+ golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
+ golang.org/x/term v0.5.0/go.mod h1:jMB1sMXY+tzblOD4FWmEbocvup2/aLOaQEp7JmGp78k=
+ golang.org/x/term v0.8.0/go.mod h1:xPskH00ivmX89bAKVGSKKtLOWNx2+17Eiy94tnKShWo=
+ golang.org/x/term v0.15.0/go.mod h1:BDl952bC7+uMoWR75FIrCDx79TPU9oHkTZ9yRbYOrX0=
+-golang.org/x/term v0.37.0 h1:8EGAD0qCmHYZg6J17DvsMy9/wJ7/D/4pV/wfnld5lTU=
+-golang.org/x/term v0.37.0/go.mod h1:5pB4lxRNYYVZuTLmy8oR2BH8dflOR+IbTYFD8fi3254=
++golang.org/x/term v0.38.0 h1:PQ5pkm/rLO6HnxFR7N2lJHOZX6Kez5Y1gDSJla6jo7Q=
++golang.org/x/term v0.38.0/go.mod h1:bSEAKrOT1W+VSu9TSCMtoGEOUcKxOKgl3LE5QEF/xVg=
+ golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
+ golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+ golang.org/x/text v0.3.6/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+-golang.org/x/text v0.32.0 h1:ZD01bjUt1FQ9WJ0ClOL5vxgxOI/sVCNgX1YtKwcY0mU=
+-golang.org/x/text v0.32.0/go.mod h1:o/rUWzghvpD5TXrTIBuJU77MTaN0ljMWE47kxGJQ7jY=
+ golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
+ golang.org/x/text v0.7.0/go.mod h1:mrYo+phRRbMaCq/xk9113O4dZlRixOauAjOtrjsXDZ8=
+ golang.org/x/text v0.9.0/go.mod h1:e1OnstbJyHTd6l/uOt8jFFHp6TRDWZR/bV3emEE/zU8=
+ golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+-golang.org/x/text v0.31.0 h1:aC8ghyu4JhP8VojJ2lEHBnochRno1sgL6nEi9WGFGMM=
+-golang.org/x/text v0.31.0/go.mod h1:tKRAlv61yKIjGGHX/4tP1LTbc13YSec1pxVEWXzfoeM=
++golang.org/x/text v0.32.0 h1:ZD01bjUt1FQ9WJ0ClOL5vxgxOI/sVCNgX1YtKwcY0mU=
++golang.org/x/text v0.32.0/go.mod h1:o/rUWzghvpD5TXrTIBuJU77MTaN0ljMWE47kxGJQ7jY=
+ golang.org/x/time v0.13.0 h1:eUlYslOIt32DgYD6utsuUeHs4d7AsEYLuIAdg7FlYgI=
+ golang.org/x/time v0.13.0/go.mod h1:eL/Oa2bBBK0TkX57Fyni+NgnyQQN4LitPmob2Hjnqw4=
+ golang.org/x/tools v0.0.0-20180525024113-a5b4c53f6e8b/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+diff --git a/src/jobservice/main.go b/src/jobservice/main.go
+index dfcf00e9e..721bcf105 100644
+--- a/src/jobservice/main.go
++++ b/src/jobservice/main.go
+@@ -31,6 +31,7 @@ import (
+ 	"github.com/goharbor/harbor/src/lib"
+ 	cfgLib "github.com/goharbor/harbor/src/lib/config"
+ 	"github.com/goharbor/harbor/src/lib/log"
++	"github.com/goharbor/harbor/src/lib/metric"
+ 	"github.com/goharbor/harbor/src/lib/retry"
+ 	tracelib "github.com/goharbor/harbor/src/lib/trace"
+ 	_ "github.com/goharbor/harbor/src/pkg/accessory/model/attestation"
+@@ -92,6 +93,16 @@ func main() {
+ 	cfgLib.InitTraceConfig(ctx)
+ 	defer tracelib.InitGlobalTracer(context.Background()).Shutdown()
+ 
++	db, err := cfgLib.Database()
++	if err != nil {
++		log.Fatalf("failed to get database configuration: %v", err)
++	}
++	if db.PostGreSQL != nil && db.PostGreSQL.MetricsEnabled {
++		if err := metric.InitMeterProvider(); err != nil {
++			log.Fatalf("init meter provider: %v", err)
++		}
++	}
++
+ 	// Set job context initializer
+ 	runtime.JobService.SetJobContextInitializer(func(ctx context.Context) (job.Context, error) {
+ 		secret := config.GetAuthSecret()
+diff --git a/src/jobservice/runtime/bootstrap.go b/src/jobservice/runtime/bootstrap.go
+index 39eb8c7d8..c460255e3 100644
+--- a/src/jobservice/runtime/bootstrap.go
++++ b/src/jobservice/runtime/bootstrap.go
+@@ -271,6 +271,9 @@ func (bs *Bootstrap) LoadAndRun(ctx context.Context, cancel context.CancelFunc)
+ 	// Wait everyone exits.
+ 	rootContext.WG.Wait()
+ 
++	if err := metric.ShutdownMeterProvider(context.Background()); err != nil {
++		logger.Warningf("shutdown meter provider: %v", err)
++	}
+ 	dao.ClosePool()
+ 
+ 	return
+diff --git a/src/lib/config/metadata/metadatalist.go b/src/lib/config/metadata/metadatalist.go
+index 3d8a3526f..18dfa9cbc 100644
+--- a/src/lib/config/metadata/metadatalist.go
++++ b/src/lib/config/metadata/metadatalist.go
+@@ -117,6 +117,7 @@ var (
+ 		{Name: common.PostGreSQLConnectTimeout, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_CONNECT_TIMEOUT", DefaultValue: "10s", ItemType: &DurationType{}, Editable: false},
+ 		{Name: common.PostGreSQLMinConns, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_MIN_CONNS", DefaultValue: "2", ItemType: &IntType{}, Editable: false},
+ 		{Name: common.PostGreSQLURL, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_URL", DefaultValue: "", ItemType: &StringType{}, Editable: false},
++		{Name: common.PostGreSQLMetricsEnabled, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_METRICS_ENABLED", DefaultValue: "false", ItemType: &BoolType{}, Editable: false},
+ 
+ 		{Name: common.ProjectCreationRestriction, Scope: UserScope, Group: BasicGroup, EnvKey: "PROJECT_CREATION_RESTRICTION", DefaultValue: common.ProCrtRestrEveryone, ItemType: &ProjectCreationRestrictionType{}, Editable: false, Description: `Indicate who can create projects, it could be ''adminonly'' or ''everyone''.`},
+ 		{Name: common.ReadOnly, Scope: UserScope, Group: BasicGroup, EnvKey: "READ_ONLY", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: `The flag to indicate whether Harbor is in readonly mode.`},
+diff --git a/src/lib/config/systemconfig.go b/src/lib/config/systemconfig.go
+index 649a336ce..55ba1966b 100644
+--- a/src/lib/config/systemconfig.go
++++ b/src/lib/config/systemconfig.go
+@@ -268,7 +268,8 @@ func Database() (*models.Database, error) {
+ 		HealthCheckPeriod: DefaultMgr().Get(backgroundCtx, common.PostGreSQLHealthCheckPeriod).GetDuration(),
+ 		ConnectTimeout:    DefaultMgr().Get(backgroundCtx, common.PostGreSQLConnectTimeout).GetDuration(),
+ 		MinConns:          int32(DefaultMgr().Get(backgroundCtx, common.PostGreSQLMinConns).GetInt()),
+-		URL: DefaultMgr().Get(backgroundCtx, common.PostGreSQLURL).GetString(),
++		URL:               DefaultMgr().Get(backgroundCtx, common.PostGreSQLURL).GetString(),
++		MetricsEnabled:    DefaultMgr().Get(backgroundCtx, common.PostGreSQLMetricsEnabled).GetBool(),
+ 	}
+ 	database.PostGreSQL = postgresql
+ 
+diff --git a/src/lib/dbpool/metrics.go b/src/lib/dbpool/metrics.go
+new file mode 100644
+index 000000000..b6a180e68
+--- /dev/null
++++ b/src/lib/dbpool/metrics.go
+@@ -0,0 +1,63 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package dbpool
++
++import (
++	"fmt"
++
++	"github.com/amirsalarsafaei/sqlc-pgx-monitoring/dbtracer"
++	"github.com/amirsalarsafaei/sqlc-pgx-monitoring/poolstatus"
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgxpool"
++)
++
++// NewTracer builds an OTel pgx tracer for the given database. The returned
++// value implements query, batch, connect, prepare, copy-from, acquire, and
++// release tracing (dbtracer.Tracer), so pgxpool picks up pool-level spans
++// in addition to per-query spans. SQL text and args are excluded from spans
++// and logs to avoid leaking sensitive data.
++func NewTracer(dbName string) (dbtracer.Tracer, error) {
++	t, err := dbtracer.NewDBTracer(
++		dbName,
++		dbtracer.WithIncludeSQLText(false),
++		dbtracer.WithLogArgs(false),
++		dbtracer.WithShouldLog(func(err error) bool { return err != nil }),
++	)
++	if err != nil {
++		return nil, fmt.Errorf("dbpool: new tracer: %w", err)
++	}
++	return t, nil
++}
++
++// WithTracer returns an Option that attaches the given pgx query tracer to
++// the pool. The parameter is typed as pgx.QueryTracer because that is the
++// static type of pgxpool.Config.ConnConfig.Tracer; pgxpool recovers the
++// pool-level tracer interfaces (AcquireTracer, ReleaseTracer, BatchTracer,
++// …) via runtime type assertion, so any tracer that implements them (for
++// example the one returned by NewTracer) will have them exercised.
++func WithTracer(tracer pgx.QueryTracer) Option {
++	return func(cfg *pgxpool.Config) {
++		cfg.ConnConfig.Tracer = tracer
++	}
++}
++
++// RegisterPoolMetrics publishes pgxpool statistics (idle, total, acquired
++// connections) as OTel observable gauges.
++func RegisterPoolMetrics(pool *pgxpool.Pool) error {
++	if err := poolstatus.Register(pool); err != nil {
++		return fmt.Errorf("dbpool: register pool metrics: %w", err)
++	}
++	return nil
++}
+diff --git a/src/lib/dbpool/metrics_test.go b/src/lib/dbpool/metrics_test.go
+new file mode 100644
+index 000000000..e6421046b
+--- /dev/null
++++ b/src/lib/dbpool/metrics_test.go
+@@ -0,0 +1,60 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package dbpool
++
++import (
++	"testing"
++
++	"github.com/amirsalarsafaei/sqlc-pgx-monitoring/dbtracer"
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgxpool"
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func TestNewTracer_ReturnsFullTracer(t *testing.T) {
++	tracer, err := NewTracer("harbor_test")
++	require.NoError(t, err)
++	require.NotNil(t, tracer)
++
++	// NewTracer's declared return type is dbtracer.Tracer, which implies
++	// every pgx/pgxpool tracing interface. If NewTracer ever narrows its
++	// return type, these assertions fail at compile time instead of
++	// silently losing pool-level spans at runtime.
++	var _ pgx.QueryTracer = tracer
++	var _ pgx.BatchTracer = tracer
++	var _ pgx.ConnectTracer = tracer
++	var _ pgx.PrepareTracer = tracer
++	var _ pgx.CopyFromTracer = tracer
++	var _ pgxpool.AcquireTracer = tracer
++	var _ pgxpool.ReleaseTracer = tracer
++}
++
++func TestNewTracer_EmptyDBNameErrors(t *testing.T) {
++	tracer, err := NewTracer("")
++	assert.Nil(t, tracer)
++	assert.ErrorIs(t, err, dbtracer.ErrDatabaseNameEmpty)
++}
++
++func TestWithTracer_AttachesToPoolConfig(t *testing.T) {
++	tracer, err := NewTracer("harbor_test")
++	require.NoError(t, err)
++
++	cfg, err := pgxpool.ParseConfig("postgres://user:pass@localhost:5432/db")
++	require.NoError(t, err)
++
++	WithTracer(tracer)(cfg)
++	assert.Same(t, tracer, cfg.ConnConfig.Tracer, "WithTracer must set ConnConfig.Tracer on the pool config")
++}
+diff --git a/src/lib/dbpool/pool.go b/src/lib/dbpool/pool.go
+index 7f5764c20..6246a2ee4 100644
+--- a/src/lib/dbpool/pool.go
++++ b/src/lib/dbpool/pool.go
+@@ -36,8 +36,8 @@ import (
+ // configuration. PostgreSQL server's own max_connections defaults to 100;
+ // the metadata default for MaxOpenConns is 100 to match.
+ const (
+-	DefaultMinConns        = 2
+-	DefaultMaxConnIdleTime = 10 * time.Minute
++	DefaultMinConns          = 2
++	DefaultMaxConnIdleTime   = 10 * time.Minute
+ 	DefaultHealthCheckPeriod = 1 * time.Minute
+ 	DefaultConnectTimeout    = 10 * time.Second
+ 	healthyTimeout           = 5 * time.Second
+@@ -194,7 +194,7 @@ func (p *Pool) SelfTest(ctx context.Context) error {
+ 	return nil
+ }
+ 
+-func (p *Pool) DB() *sql.DB       { return p.db }
++func (p *Pool) DB() *sql.DB            { return p.db }
+ func (p *Pool) PgxPool() *pgxpool.Pool { return p.pool }
+ 
+ func (p *Pool) Close() {
+diff --git a/src/lib/dbpool/pool_integration_test.go b/src/lib/dbpool/pool_integration_test.go
+index 0a294e55b..7d8ae409e 100644
+--- a/src/lib/dbpool/pool_integration_test.go
++++ b/src/lib/dbpool/pool_integration_test.go
+@@ -280,7 +280,6 @@ func TestPool_ConcurrentQueries(t *testing.T) {
+ 		"pool should never exceed MaxConns")
+ }
+ 
+-
+ // ---------------------------------------------------------------------------
+ // Option extensibility
+ // ---------------------------------------------------------------------------
+diff --git a/src/lib/metric/otel.go b/src/lib/metric/otel.go
+new file mode 100644
+index 000000000..a61925292
+--- /dev/null
++++ b/src/lib/metric/otel.go
+@@ -0,0 +1,74 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package metric
++
++import (
++	"context"
++	"fmt"
++	"sync"
++
++	"go.opentelemetry.io/otel"
++	promexporter "go.opentelemetry.io/otel/exporters/prometheus"
++	noopmetric "go.opentelemetry.io/otel/metric/noop"
++	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
++)
++
++var (
++	meterMu       sync.Mutex
++	meterProvider *sdkmetric.MeterProvider
++)
++
++// InitMeterProvider sets up the OTel-to-Prometheus metrics bridge.
++// The Prometheus exporter auto-registers with prometheus.DefaultRegisterer,
++// so metrics appear on the existing /metrics endpoint served by
++// promhttp.Handler(). Must be called before any code that creates OTel
++// instruments against otel.GetMeterProvider() (dbpool.NewTracer and
++// dbpool.RegisterPoolMetrics), otherwise those instruments attach to the
++// no-op provider and emit nothing. Safe to call multiple times.
++func InitMeterProvider() error {
++	meterMu.Lock()
++	defer meterMu.Unlock()
++	if meterProvider != nil {
++		return nil
++	}
++	exporter, err := promexporter.New(
++		promexporter.WithoutTargetInfo(),
++		promexporter.WithoutScopeInfo(),
++	)
++	if err != nil {
++		return fmt.Errorf("metric: init prometheus exporter: %w", err)
++	}
++	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exporter))
++	meterProvider = mp
++	otel.SetMeterProvider(mp)
++	return nil
++}
++
++// ShutdownMeterProvider flushes pending metrics, releases resources, and
++// restores the global OTel MeterProvider to the no-op implementation so
++// subsequent instrument reads do not write into the shut-down provider.
++// Safe to call before InitMeterProvider (no-op in that case) and safe to
++// call followed by another InitMeterProvider to re-init.
++func ShutdownMeterProvider(ctx context.Context) error {
++	meterMu.Lock()
++	mp := meterProvider
++	meterProvider = nil
++	meterMu.Unlock()
++	if mp == nil {
++		return nil
++	}
++	otel.SetMeterProvider(noopmetric.NewMeterProvider())
++	return mp.Shutdown(ctx)
++}
+diff --git a/src/lib/metric/otel_test.go b/src/lib/metric/otel_test.go
+new file mode 100644
+index 000000000..d41368027
+--- /dev/null
++++ b/src/lib/metric/otel_test.go
+@@ -0,0 +1,84 @@
++// Copyright Project Harbor Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//    http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package metric
++
++import (
++	"context"
++	"testing"
++
++	"github.com/stretchr/testify/require"
++	"go.opentelemetry.io/otel"
++	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
++)
++
++// resetMeterProviderForTest clears package-level state between tests so
++// each case gets a fresh provider. Callers hold the lock while mutating.
++func resetMeterProviderForTest(t *testing.T) {
++	t.Helper()
++	meterMu.Lock()
++	meterProvider = nil
++	meterMu.Unlock()
++}
++
++func TestInitMeterProvider_SetsGlobal(t *testing.T) {
++	resetMeterProviderForTest(t)
++	t.Cleanup(func() { _ = ShutdownMeterProvider(context.Background()) })
++
++	require.NoError(t, InitMeterProvider())
++
++	_, ok := otel.GetMeterProvider().(*sdkmetric.MeterProvider)
++	require.True(t, ok, "global meter provider should be an sdkmetric.MeterProvider after Init")
++}
++
++func TestInitMeterProvider_Idempotent(t *testing.T) {
++	resetMeterProviderForTest(t)
++	t.Cleanup(func() { _ = ShutdownMeterProvider(context.Background()) })
++
++	require.NoError(t, InitMeterProvider())
++	first := otel.GetMeterProvider()
++
++	require.NoError(t, InitMeterProvider())
++	second := otel.GetMeterProvider()
++
++	require.Same(t, first, second, "second InitMeterProvider must not replace the provider")
++}
++
++func TestShutdownMeterProvider_NoOpBeforeInit(t *testing.T) {
++	resetMeterProviderForTest(t)
++
++	require.NoError(t, ShutdownMeterProvider(context.Background()))
++}
++
++func TestShutdownMeterProvider_ResetsState(t *testing.T) {
++	resetMeterProviderForTest(t)
++
++	require.NoError(t, InitMeterProvider())
++	first := meterProvider
++	require.NotNil(t, first)
++
++	require.NoError(t, ShutdownMeterProvider(context.Background()))
++
++	// After shutdown, the package-level pointer must be cleared so that a
++	// subsequent Init does not silently early-return and leave the global
++	// pointing at the shut-down provider.
++	meterMu.Lock()
++	require.Nil(t, meterProvider, "shutdown must clear meterProvider")
++	meterMu.Unlock()
++
++	require.NoError(t, InitMeterProvider())
++	require.NotSame(t, first, meterProvider, "re-init must create a new provider")
++
++	t.Cleanup(func() { _ = ShutdownMeterProvider(context.Background()) })
++}
+diff --git a/src/local/sqlc-pgx-monitoring/LICENSE b/src/local/sqlc-pgx-monitoring/LICENSE
+new file mode 100644
+index 000000000..9885ac386
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/LICENSE
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2023 AmirSalar Safaei Ghaderi
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/consts.go b/src/local/sqlc-pgx-monitoring/dbtracer/consts.go
+new file mode 100644
+index 000000000..df7a6105e
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/consts.go
+@@ -0,0 +1,17 @@
++package dbtracer
++
++import "go.opentelemetry.io/otel/attribute"
++
++const (
++	SQLCQueryNameKey      = attribute.Key("sqlc.query.name")
++	SQLCQueryCommandKey   = attribute.Key("sqlc.query.command")
++	PGXOperationTypeKey   = attribute.Key("pgx.operation.type")
++	PGXPrepareStmtNameKey = attribute.Key("pgx.prepare_stmt.name")
++	PGXStatusKey          = attribute.Key("pgx.status")
++
++	DBStatusCodeKey = attribute.Key("db.response.status_code")
++
++	PGXPoolConnOperationKey = attribute.Key("pgx.pool.operation")
++)
++
++var defaultBucketBoundaries = []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/dbtracer.go b/src/local/sqlc-pgx-monitoring/dbtracer/dbtracer.go
+new file mode 100644
+index 000000000..3143568f5
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/dbtracer.go
+@@ -0,0 +1,271 @@
++// Package dbtracer provides a tracer implementation for pgx and pgxpool that integrates with OpenTelemetry.
++// dbtracer parses sqlc generated queries to extract query name and command type for better observability.
++package dbtracer
++
++import (
++	"context"
++	"encoding/hex"
++	"errors"
++	"fmt"
++	"log/slog"
++	"time"
++	"unicode/utf8"
++
++	"github.com/jackc/pgx/v5"
++	"github.com/jackc/pgx/v5/pgconn"
++	"github.com/jackc/pgx/v5/pgxpool"
++	"go.opentelemetry.io/otel"
++	"go.opentelemetry.io/otel/attribute"
++	"go.opentelemetry.io/otel/codes"
++	"go.opentelemetry.io/otel/metric"
++	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
++	"go.opentelemetry.io/otel/trace"
++)
++
++var ErrDatabaseNameEmpty = errors.New("database name is empty")
++
++type Tracer interface {
++	pgx.BatchTracer
++	pgx.ConnectTracer
++	pgx.CopyFromTracer
++	pgx.QueryTracer
++	pgx.PrepareTracer
++	pgxpool.AcquireTracer
++	pgxpool.ReleaseTracer
++}
++
++// dbTracer implements pgx.QueryTracer, pgx.BatchTracer, pgx.ConnectTracer, and pgx.CopyFromTracer
++type dbTracer struct {
++	logger          *slog.Logger
++	shouldLog       ShouldLog
++	databaseName    string
++	logArgs         bool
++	logArgsLenLimit int
++
++	dbOperationsHist metric.Float64Histogram
++
++	acquireConnectionHist metric.Float64Histogram
++	connAcquireCounter    metric.Int64Counter
++	connReleaseCounter    metric.Int64Counter
++
++	infoAttrs []attribute.KeyValue
++
++	traceProvider         trace.TracerProvider
++	traceLibraryName      string
++	includeQueryText      bool
++	includeSpanNameSuffix bool
++}
++
++func NewDBTracer(
++	databaseName string,
++	opts ...Option,
++) (Tracer, error) {
++	if databaseName == "" {
++		return nil, ErrDatabaseNameEmpty
++	}
++
++	optCtx := optionCtx{
++		name: "github.com/amirsalarsafaei/sqlc-pgx-monitoring",
++		shouldLog: func(_ error) bool {
++			return true
++		},
++		meterProvider:   otel.GetMeterProvider(),
++		traceProvider:   otel.GetTracerProvider(),
++		logArgs:         true,
++		logArgsLenLimit: 64,
++		latencyHistogramConfig: struct {
++			name             string
++			unit             string
++			description      string
++			bucketBoundaries []float64
++		}{
++			description:      semconv.DBClientOperationDurationDescription,
++			unit:             semconv.DBClientOperationDurationUnit,
++			name:             semconv.DBClientOperationDurationName,
++			bucketBoundaries: defaultBucketBoundaries,
++		},
++		logger:         slog.Default(),
++		includeSQLText: false,
++	}
++	for _, opt := range opts {
++		opt(&optCtx)
++	}
++
++	meter := optCtx.meterProvider.Meter(optCtx.name)
++	histogram, err := meter.Float64Histogram(
++		optCtx.latencyHistogramConfig.name,
++		metric.WithDescription(optCtx.latencyHistogramConfig.description),
++		metric.WithUnit(optCtx.latencyHistogramConfig.unit),
++		metric.WithExplicitBucketBoundaries(optCtx.latencyHistogramConfig.bucketBoundaries...),
++	)
++	if err != nil {
++		return nil, fmt.Errorf("initializing histogram meter: %w", err)
++	}
++
++	connAcquireHist, err := meter.Float64Histogram(
++		"pgx.pool.trace.acquire.duration",
++		metric.WithDescription("time taken to acquire a connection from the pool"),
++		metric.WithUnit("s"),
++		metric.WithExplicitBucketBoundaries(defaultBucketBoundaries...),
++	)
++	if err != nil {
++		return nil, fmt.Errorf("initializing trace connection acquire meter: %w", err)
++	}
++
++	connAcquireMeter, err := meter.Int64Counter(
++		"pgx.pool.trace.acquire.count",
++		metric.WithDescription("counter for acquiring connections from the pool"),
++		metric.WithUnit("{connection}"),
++	)
++	if err != nil {
++		return nil, fmt.Errorf("initializing trace connection acquire meter: %w", err)
++	}
++
++	connReleaseMeter, err := meter.Int64Counter(
++		"pgx.pool.trace.release.count",
++		metric.WithDescription("counter for releasing connections back to the pool"),
++		metric.WithUnit("{connection}"),
++	)
++	if err != nil {
++		return nil, fmt.Errorf("initializing trace connection release meter: %w", err)
++	}
++
++	infoSet := attribute.NewSet(
++		semconv.DBSystemPostgreSQL,
++		semconv.DBNamespace(databaseName),
++	)
++
++	return &dbTracer{
++		logger:                optCtx.logger,
++		databaseName:          databaseName,
++		shouldLog:             optCtx.shouldLog,
++		logArgs:               optCtx.logArgs,
++		logArgsLenLimit:       optCtx.logArgsLenLimit,
++		dbOperationsHist:      histogram,
++		traceProvider:         optCtx.traceProvider,
++		traceLibraryName:      optCtx.name,
++		includeQueryText:      optCtx.includeSQLText,
++		includeSpanNameSuffix: optCtx.includeSpanNameSuffix,
++		infoAttrs:             infoSet.ToSlice(),
++		acquireConnectionHist: connAcquireHist,
++		connAcquireCounter:    connAcquireMeter,
++		connReleaseCounter:    connReleaseMeter,
++	}, nil
++}
++
++type ctxKey int
++
++const (
++	_ ctxKey = iota
++	dbTracerQueryCtxKey
++	dbTracerBatchCtxKey
++	dbTracerCopyFromCtxKey
++	dbTracerConnectCtxKey
++	dbTracerPrepareCtxKey
++	dbTracerAcquireCtxKey
++)
++
++func (dt *dbTracer) recordSpanError(span trace.Span, err error) {
++	if err != nil {
++		span.RecordError(err)
++		span.SetStatus(codes.Error, err.Error())
++
++		var pgErr *pgconn.PgError
++		if errors.As(err, &pgErr) {
++			span.SetAttributes(DBStatusCodeKey.String(pgErr.Code))
++		}
++	}
++}
++
++func (dt *dbTracer) recordDBOperationHistogramMetric(ctx context.Context,
++	pgxOperation string, qMD *queryMetadata, duration time.Duration, err error) {
++	attrs := []attribute.KeyValue{
++		PGXStatusKey.String(pgxStatusFromErr(err)),
++		PGXOperationTypeKey.String(pgxOperation),
++	}
++
++	if qMD != nil {
++		attrs = append(attrs, SQLCQueryNameKey.String(qMD.name),
++			SQLCQueryCommandKey.String(qMD.command))
++	}
++
++	dt.dbOperationsHist.Record(ctx, duration.Seconds(),
++		metric.WithAttributes(dt.infoAttrs...),
++		metric.WithAttributes(attrs...))
++}
++
++func pgxStatusFromErr(err error) string {
++	if err == nil {
++		return "OK"
++	}
++
++	var pgErr *pgconn.PgError
++	if errors.As(err, &pgErr) {
++		return pgErr.Severity
++	}
++
++	return "UNKNOWN_ERROR"
++}
++
++func (dt *dbTracer) logQueryArgs(args []any) []any {
++	if !dt.logArgs {
++		return nil
++	}
++
++	logArgs := make([]any, 0, len(args))
++	limit := dt.logArgsLenLimit
++	if limit == 0 {
++		limit = 64 // default limit if not set
++	}
++
++	for _, a := range args {
++		switch v := a.(type) {
++		case []byte:
++			if len(v) <= limit {
++				a = hex.EncodeToString(v)
++			} else {
++				a = fmt.Sprintf("%x (truncated %d bytes)", v[:limit], len(v)-limit)
++			}
++		case string:
++			if len(v) > limit {
++				var l int
++				for w := 0; l < limit; l += w {
++					_, w = utf8.DecodeRuneInString(v[l:])
++				}
++
++				if len(v) > l {
++					a = fmt.Sprintf("%s (truncated %d bytes)", v[:l], len(v)-l)
++				}
++			}
++		}
++
++		logArgs = append(logArgs, a)
++	}
++
++	return logArgs
++}
++
++func (dt *dbTracer) spanName(operationName string, qMD *queryMetadata) string {
++	if !dt.includeSpanNameSuffix || qMD == nil {
++		return operationName
++	}
++
++	return fmt.Sprintf("%s %s", operationName, qMD.name)
++}
++
++func (dt *dbTracer) getTracer() trace.Tracer {
++	return dt.traceProvider.Tracer(dt.traceLibraryName)
++}
++
++func extractConnectionID(conn *pgx.Conn) uint32 {
++	if conn == nil {
++		return 0
++	}
++
++	pgConn := conn.PgConn()
++	if pgConn != nil {
++		pid := pgConn.PID()
++		return pid
++	}
++	return 0
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/options.go b/src/local/sqlc-pgx-monitoring/dbtracer/options.go
+new file mode 100644
+index 000000000..f3f81b8eb
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/options.go
+@@ -0,0 +1,90 @@
++package dbtracer
++
++import (
++	"log/slog"
++
++	"go.opentelemetry.io/otel/metric"
++	"go.opentelemetry.io/otel/trace"
++)
++
++type ShouldLog func(err error) bool
++
++type optionCtx struct {
++	name                   string
++	shouldLog              ShouldLog
++	meterProvider          metric.MeterProvider
++	traceProvider          trace.TracerProvider
++	latencyHistogramConfig struct {
++		name             string
++		unit             string
++		description      string
++		bucketBoundaries []float64
++	}
++	logger                *slog.Logger
++	logArgs               bool
++	logArgsLenLimit       int
++	includeSQLText        bool
++	includeSpanNameSuffix bool
++}
++
++type Option func(*optionCtx)
++
++func WithShouldLog(shouldLog ShouldLog) Option {
++	return func(oc *optionCtx) {
++		oc.shouldLog = shouldLog
++	}
++}
++
++func WithMeterProvider(mp metric.MeterProvider) Option {
++	return func(oc *optionCtx) {
++		oc.meterProvider = mp
++	}
++}
++
++func WithLatencyHistogramConfig(name, unit, description string, bucketBoundaries ...float64) Option {
++	return func(oc *optionCtx) {
++		oc.latencyHistogramConfig.name = name
++		oc.latencyHistogramConfig.unit = unit
++		oc.latencyHistogramConfig.description = description
++
++		if len(bucketBoundaries) != 0 {
++			oc.latencyHistogramConfig.bucketBoundaries = bucketBoundaries
++		}
++	}
++}
++
++func WithLogger(logger *slog.Logger) Option {
++	return func(oc *optionCtx) {
++		oc.logger = logger
++	}
++}
++
++func WithTraceProvider(tp trace.TracerProvider) Option {
++	return func(oc *optionCtx) {
++		oc.traceProvider = tp
++	}
++}
++
++func WithLogArgs(enabled bool) Option {
++	return func(oc *optionCtx) {
++		oc.logArgs = enabled
++	}
++}
++
++func WithLogArgsLenLimit(limit int) Option {
++	return func(oc *optionCtx) {
++		oc.logArgsLenLimit = limit
++	}
++}
++
++func WithIncludeSQLText(includeSQLText bool) Option {
++	return func(oc *optionCtx) {
++		oc.includeSQLText = includeSQLText
++	}
++}
++
++func WithIncludeSpanNameSuffix(includeSpanNameSuffix bool) Option {
++	return func(oc *optionCtx) {
++		oc.includeSpanNameSuffix = includeSpanNameSuffix
++	}
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/queryname.go b/src/local/sqlc-pgx-monitoring/dbtracer/queryname.go
+new file mode 100644
+index 000000000..34d00053c
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/queryname.go
+@@ -0,0 +1,21 @@
++package dbtracer
++
++import (
++	"regexp"
++)
++
++// sqlc queries are declared after a sql command in the form of -- name: TheQueryName :type
++var queryNameRegex = regexp.MustCompile(`^(?:--|/\*)\s+name:\s+(?P<name>\w+) :(?P<command>\w+)`)
++
++type queryMetadata struct {
++	name    string
++	command string
++}
++
++func queryMetadataFromSQL(sql string) *queryMetadata {
++	m := queryNameRegex.FindStringSubmatch(sql)
++	if m == nil {
++		return nil
++	}
++	return &queryMetadata{name: m[1], command: m[2]}
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/traceacquire.go b/src/local/sqlc-pgx-monitoring/dbtracer/traceacquire.go
+new file mode 100644
+index 000000000..fb0031c71
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/traceacquire.go
+@@ -0,0 +1,76 @@
++package dbtracer
++
++import (
++	"context"
++	"log/slog"
++	"time"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++	"go.opentelemetry.io/otel/codes"
++	"go.opentelemetry.io/otel/metric"
++	"go.opentelemetry.io/otel/trace"
++)
++
++var (
++	pgxPoolConnOperationAcquire = PGXPoolConnOperationKey.String("acquire")
++)
++
++type traceAcquireData struct {
++	startTime time.Time
++}
++
++// TraceAcquireStart implements Tracer.
++func (dt *dbTracer) TraceAcquireStart(ctx context.Context, _ *pgxpool.Pool, _ pgxpool.TraceAcquireStartData) context.Context {
++	ctx, _ = dt.getTracer().Start(ctx, "pgxpool.acquire", trace.WithSpanKind(trace.SpanKindClient),
++		trace.WithAttributes(
++			dt.infoAttrs...,
++		), trace.WithAttributes(pgxPoolConnOperationAcquire))
++
++	return context.WithValue(ctx, dbTracerAcquireCtxKey, &traceAcquireData{
++		startTime: time.Now(),
++	})
++}
++
++// TraceAcquireEnd implements Tracer.
++func (dt *dbTracer) TraceAcquireEnd(ctx context.Context, _ *pgxpool.Pool, data pgxpool.TraceAcquireEndData) {
++	traceData, ok := ctx.Value(dbTracerAcquireCtxKey).(*traceAcquireData)
++	if !ok || traceData == nil {
++		return
++	}
++
++	span := trace.SpanFromContext(ctx)
++	if !span.SpanContext().IsValid() {
++		return
++	}
++	defer span.End()
++
++	var logAttrs []slog.Attr
++	var level slog.Level
++
++	if data.Err != nil {
++		span.RecordError(data.Err)
++		span.SetStatus(codes.Error, data.Err.Error())
++
++		logAttrs = append(logAttrs, slog.String("error", data.Err.Error()))
++		level = slog.LevelError
++	} else {
++		span.SetStatus(codes.Ok, "")
++		level = slog.LevelInfo
++	}
++
++	dt.connAcquireCounter.Add(ctx, 1, metric.WithAttributes(
++		pgxPoolConnOperationAcquire,
++	))
++
++	dt.acquireConnectionHist.Record(ctx, time.Since(traceData.startTime).Seconds(),
++		metric.WithAttributes(dt.infoAttrs...))
++
++	if dt.shouldLog(data.Err) {
++		logAttrs = append(logAttrs, slog.Uint64("pid", uint64(extractConnectionID(data.Conn))))
++
++		dt.logger.LogAttrs(ctx, level,
++			"acquire connection",
++			logAttrs...,
++		)
++	}
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/tracebatch.go b/src/local/sqlc-pgx-monitoring/dbtracer/tracebatch.go
+new file mode 100644
+index 000000000..2b4d91188
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/tracebatch.go
+@@ -0,0 +1,136 @@
++package dbtracer
++
++import (
++	"context"
++	"log/slog"
++	"time"
++
++	"github.com/jackc/pgx/v5"
++	"go.opentelemetry.io/otel/codes"
++	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
++	"go.opentelemetry.io/otel/trace"
++)
++
++type traceBatchData struct {
++	startTime       time.Time // 16 bytes
++	batchQuerySpans []trace.Span
++	batchIndex      int
++}
++
++var (
++	pgxOperationBatch      = PGXOperationTypeKey.String("batch")
++	pgxOperationBatchQuery = PGXOperationTypeKey.String("batch.query")
++)
++
++func (dt *dbTracer) TraceBatchStart(ctx context.Context, _ *pgx.Conn, batch pgx.TraceBatchStartData) context.Context {
++	ctx, _ = dt.getTracer().Start(ctx, "postgresql.batch", trace.WithSpanKind(trace.SpanKindClient),
++		trace.WithAttributes(
++			dt.infoAttrs...,
++		), trace.WithAttributes(pgxOperationBatch))
++
++	var batchQuerySpans []trace.Span
++	if batch.Batch != nil {
++		batchQuerySpans = make([]trace.Span, len(batch.Batch.QueuedQueries))
++		for i, q := range batch.Batch.QueuedQueries {
++			_, span := dt.getTracer().Start(ctx, "postgresql.batch.query", trace.WithSpanKind(trace.SpanKindClient),
++				trace.WithAttributes(dt.infoAttrs...), trace.WithAttributes(
++					pgxOperationBatchQuery))
++
++			qMD := queryMetadataFromSQL(q.SQL)
++			if qMD != nil {
++				span.SetAttributes(
++					SQLCQueryNameKey.String(qMD.name),
++					SQLCQueryCommandKey.String(qMD.command),
++					semconv.DBOperationName(qMD.name),
++				)
++			}
++
++			batchQuerySpans[i] = span
++		}
++	}
++
++	return context.WithValue(ctx, dbTracerBatchCtxKey, &traceBatchData{
++		startTime:       time.Now(),
++		batchQuerySpans: batchQuerySpans,
++	})
++}
++
++func (dt *dbTracer) TraceBatchQuery(ctx context.Context, conn *pgx.Conn, data pgx.TraceBatchQueryData) {
++	traceData, ok := ctx.Value(dbTracerBatchCtxKey).(*traceBatchData)
++	if !ok || traceData == nil {
++		return
++	}
++
++	if traceData.batchIndex >= len(traceData.batchQuerySpans) {
++		return
++	}
++
++	span := traceData.batchQuerySpans[traceData.batchIndex]
++	defer span.End()
++	traceData.batchIndex++
++
++	var logAttrs []slog.Attr
++	var level slog.Level
++	if data.Err != nil {
++		span.SetStatus(codes.Error, data.Err.Error())
++		span.RecordError(data.Err)
++		logAttrs = append(logAttrs, slog.String("error", data.Err.Error()))
++		level = slog.LevelError
++	} else {
++		span.SetStatus(codes.Ok, "")
++		logAttrs = append(logAttrs, slog.String("commandTag", data.CommandTag.String()))
++		level = slog.LevelInfo
++	}
++
++	if dt.shouldLog(data.Err) {
++		logAttrs = append(logAttrs, slog.String("sql", data.SQL),
++			slog.Any("args", dt.logQueryArgs(data.Args)),
++			slog.Uint64("pid", uint64(extractConnectionID(conn))),
++		)
++
++		dt.logger.LogAttrs(ctx, level,
++			"batch query",
++			logAttrs...,
++		)
++	}
++}
++
++func (dt *dbTracer) TraceBatchEnd(ctx context.Context, conn *pgx.Conn, data pgx.TraceBatchEndData) {
++	traceData, ok := ctx.Value(dbTracerBatchCtxKey).(*traceBatchData)
++	if !ok || traceData == nil {
++		return
++	}
++
++	span := trace.SpanFromContext(ctx)
++	if !span.SpanContext().IsValid() {
++		return
++	}
++	defer span.End()
++
++	interval := time.Since(traceData.startTime)
++
++	dt.recordDBOperationHistogramMetric(ctx, "batch", nil, interval, data.Err)
++
++	var logAttrs []slog.Attr
++	var level slog.Level
++
++	if data.Err != nil {
++		dt.recordSpanError(span, data.Err)
++		logAttrs = append(logAttrs, slog.String("error", data.Err.Error()))
++		level = slog.LevelError
++	} else {
++		span.SetStatus(codes.Ok, "")
++		level = slog.LevelInfo
++	}
++
++	if dt.shouldLog(data.Err) {
++		logAttrs = append(logAttrs, slog.Duration("interval", interval),
++			slog.Uint64("pid", uint64(extractConnectionID(conn))),
++		)
++
++		dt.logger.LogAttrs(ctx, level,
++			"batch end",
++			logAttrs...,
++		)
++	}
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/traceconnect.go b/src/local/sqlc-pgx-monitoring/dbtracer/traceconnect.go
+new file mode 100644
+index 000000000..888eb14ab
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/traceconnect.go
+@@ -0,0 +1,74 @@
++package dbtracer
++
++import (
++	"context"
++	"log/slog"
++	"time"
++
++	"github.com/jackc/pgx/v5"
++	"go.opentelemetry.io/otel/codes"
++	"go.opentelemetry.io/otel/trace"
++)
++
++type traceConnectData struct {
++	startTime  time.Time
++	connConfig *pgx.ConnConfig
++}
++
++var pgxOperationConnect = PGXOperationTypeKey.String("connect")
++
++func (dt *dbTracer) TraceConnectStart(ctx context.Context, data pgx.TraceConnectStartData) context.Context {
++
++	ctx, _ = dt.getTracer().Start(ctx, "postgresql.connect", trace.WithSpanKind(trace.SpanKindClient),
++		trace.WithAttributes(
++			dt.infoAttrs...),
++		trace.WithAttributes(pgxOperationConnect))
++
++	return context.WithValue(ctx, dbTracerConnectCtxKey, &traceConnectData{
++		startTime:  time.Now(),
++		connConfig: data.ConnConfig,
++	})
++}
++
++func (dt *dbTracer) TraceConnectEnd(ctx context.Context, data pgx.TraceConnectEndData) {
++	traceData, ok := ctx.Value(dbTracerConnectCtxKey).(*traceConnectData)
++	if !ok || traceData == nil {
++		return
++	}
++
++	interval := time.Since(traceData.startTime)
++
++	dt.recordDBOperationHistogramMetric(ctx, "connect", nil, interval, data.Err)
++
++	span := trace.SpanFromContext(ctx)
++	if !span.SpanContext().IsValid() {
++		return
++	}
++	defer span.End()
++
++	var logAttrs []slog.Attr
++	var level slog.Level
++
++	if data.Err != nil {
++		dt.recordSpanError(span, data.Err)
++		logAttrs = append(logAttrs, slog.Any("error", data.Err))
++		level = slog.LevelError
++	} else {
++		span.SetStatus(codes.Ok, "")
++		level = slog.LevelInfo
++	}
++
++	if dt.shouldLog(data.Err) {
++		logAttrs = append(logAttrs,
++			slog.String("host", traceData.connConfig.Host),
++			slog.Uint64("port", uint64(traceData.connConfig.Port)),
++			slog.String("database", traceData.connConfig.Database),
++			slog.Duration("time", interval),
++		)
++
++		dt.logger.LogAttrs(ctx, level,
++			"database connect",
++			logAttrs...,
++		)
++	}
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/tracecopyfrom.go b/src/local/sqlc-pgx-monitoring/dbtracer/tracecopyfrom.go
+new file mode 100644
+index 000000000..1c1af345a
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/tracecopyfrom.go
+@@ -0,0 +1,79 @@
++package dbtracer
++
++import (
++	"context"
++	"log/slog"
++	"time"
++
++	"github.com/jackc/pgx/v5"
++	"go.opentelemetry.io/otel/codes"
++	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
++	"go.opentelemetry.io/otel/trace"
++)
++
++type traceCopyFromData struct {
++	ColumnNames []string
++	startTime   time.Time
++	TableName   pgx.Identifier
++}
++
++var pgxOperationCopyFrom = PGXOperationTypeKey.String("copy_from")
++
++func (dt *dbTracer) TraceCopyFromStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceCopyFromStartData) context.Context {
++
++	ctx, _ = dt.getTracer().Start(ctx, "postgresql.copy_from", trace.WithSpanKind(trace.SpanKindClient),
++		trace.WithAttributes(
++			dt.infoAttrs...),
++		trace.WithAttributes(
++			pgxOperationCopyFrom,
++			semconv.DBCollectionName(data.TableName.Sanitize())),
++	)
++
++	return context.WithValue(ctx, dbTracerCopyFromCtxKey, &traceCopyFromData{
++		startTime:   time.Now(),
++		TableName:   data.TableName,
++		ColumnNames: data.ColumnNames,
++	})
++}
++
++func (dt *dbTracer) TraceCopyFromEnd(ctx context.Context, conn *pgx.Conn, data pgx.TraceCopyFromEndData) {
++	copyFromData, ok := ctx.Value(dbTracerCopyFromCtxKey).(*traceCopyFromData)
++	if !ok || copyFromData == nil {
++		return
++	}
++
++	span := trace.SpanFromContext(ctx)
++	if !span.SpanContext().IsValid() {
++		return
++	}
++	defer span.End()
++
++	interval := time.Since(copyFromData.startTime)
++	dt.recordDBOperationHistogramMetric(ctx, "copy_from", nil, interval, data.Err)
++
++	var logAttrs []slog.Attr
++	var level slog.Level
++
++	if data.Err != nil {
++		dt.recordSpanError(span, data.Err)
++		logAttrs = append(logAttrs, slog.String("error", data.Err.Error()))
++		level = slog.LevelError
++	} else {
++		span.SetStatus(codes.Ok, "")
++		logAttrs = append(logAttrs, slog.Int64("rowCount", data.CommandTag.RowsAffected()))
++		level = slog.LevelInfo
++	}
++
++	if dt.shouldLog(data.Err) {
++		logAttrs = append(logAttrs, slog.Any("tableName", copyFromData.TableName),
++			slog.Any("columnNames", copyFromData.ColumnNames),
++			slog.Duration("time", interval),
++			slog.Uint64("pid", uint64(extractConnectionID(conn))),
++		)
++
++		dt.logger.LogAttrs(ctx, level,
++			"copy_from",
++			logAttrs...,
++		)
++	}
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/traceprepare.go b/src/local/sqlc-pgx-monitoring/dbtracer/traceprepare.go
+new file mode 100644
+index 000000000..111123ca4
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/traceprepare.go
+@@ -0,0 +1,100 @@
++package dbtracer
++
++import (
++	"context"
++	"log/slog"
++	"time"
++
++	"github.com/jackc/pgx/v5"
++	"go.opentelemetry.io/otel/codes"
++	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
++	"go.opentelemetry.io/otel/trace"
++)
++
++type tracePrepareData struct {
++	startTime     time.Time // 16 bytes
++	qMD           *queryMetadata
++	sql           string // 16 bytes
++	statementName string // 16 bytes
++}
++
++var pgxOperationPrepare = PGXOperationTypeKey.String("prepare")
++
++func (dt *dbTracer) TracePrepareStart(
++	ctx context.Context,
++	_ *pgx.Conn,
++	data pgx.TracePrepareStartData,
++) context.Context {
++	qMD := queryMetadataFromSQL(data.SQL)
++
++	spanName := dt.spanName("postgresql.prepare", qMD)
++
++	ctx, span := dt.getTracer().Start(ctx, spanName, trace.WithSpanKind(trace.SpanKindClient),
++		trace.WithAttributes(
++			dt.infoAttrs...),
++		trace.WithAttributes(
++			pgxOperationPrepare,
++			PGXPrepareStmtNameKey.String(data.Name)),
++	)
++
++	if qMD != nil {
++		span.SetAttributes(
++			SQLCQueryNameKey.String(qMD.name),
++			SQLCQueryCommandKey.String(qMD.command),
++			semconv.DBOperationName(qMD.name),
++		)
++	}
++
++	return context.WithValue(ctx, dbTracerPrepareCtxKey, &tracePrepareData{
++		startTime:     time.Now(),
++		statementName: data.Name,
++		sql:           data.SQL,
++		qMD:           qMD,
++	})
++}
++
++func (dt *dbTracer) TracePrepareEnd(
++	ctx context.Context,
++	conn *pgx.Conn,
++	data pgx.TracePrepareEndData,
++) {
++	traceData := ctx.Value(dbTracerPrepareCtxKey).(*tracePrepareData)
++	if traceData == nil {
++		return
++	}
++
++	span := trace.SpanFromContext(ctx)
++	if !span.SpanContext().IsValid() {
++		return
++	}
++	defer span.End()
++
++	interval := time.Since(traceData.startTime)
++	dt.recordDBOperationHistogramMetric(ctx, "prepare", traceData.qMD, interval, data.Err)
++
++	var logAttrs []slog.Attr
++	var level slog.Level
++
++	if data.Err != nil {
++		dt.recordSpanError(span, data.Err)
++		logAttrs = append(logAttrs, slog.String("error", data.Err.Error()))
++		level = slog.LevelError
++	} else {
++		span.SetStatus(codes.Ok, "")
++		logAttrs = append(logAttrs, slog.Bool("alreadyPrepared", data.AlreadyPrepared))
++		level = slog.LevelInfo
++	}
++
++	if dt.shouldLog(data.Err) {
++		logAttrs = append(logAttrs, slog.String("statement_name", traceData.statementName),
++			slog.String("sql", traceData.sql),
++			slog.Duration("time", interval),
++			slog.Uint64("pid", uint64(extractConnectionID(conn))),
++		)
++
++		dt.logger.LogAttrs(ctx, level,
++			"prepare",
++			logAttrs...,
++		)
++	}
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/tracequery.go b/src/local/sqlc-pgx-monitoring/dbtracer/tracequery.go
+new file mode 100644
+index 000000000..76310069f
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/tracequery.go
+@@ -0,0 +1,106 @@
++package dbtracer
++
++import (
++	"context"
++	"log/slog"
++	"time"
++
++	"github.com/jackc/pgx/v5"
++	"go.opentelemetry.io/otel/codes"
++	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
++	"go.opentelemetry.io/otel/trace"
++)
++
++type traceQueryData struct {
++	args      []any  // 24 bytes
++	sql       string // 16 bytes
++	qMD       *queryMetadata
++	startTime time.Time // 8 bytes
++}
++
++var pgxOperationQuery = PGXOperationTypeKey.String("query")
++
++func (dt *dbTracer) TraceQueryStart(
++	ctx context.Context,
++	_ *pgx.Conn,
++	data pgx.TraceQueryStartData,
++) context.Context {
++	qMD := queryMetadataFromSQL(data.SQL)
++
++	spanName := dt.spanName("postgresql.query", qMD)
++
++	ctx, span := dt.getTracer().Start(ctx, spanName, trace.WithSpanKind(trace.SpanKindClient),
++		trace.WithAttributes(
++			dt.infoAttrs...),
++		trace.WithAttributes(pgxOperationQuery),
++	)
++
++	if qMD != nil {
++		span.SetAttributes(
++			SQLCQueryNameKey.String(qMD.name),
++			SQLCQueryCommandKey.String(qMD.command),
++			semconv.DBOperationName(qMD.name),
++		)
++	}
++
++	if dt.includeQueryText {
++		span.SetAttributes(semconv.DBQueryText(data.SQL))
++	}
++
++	return context.WithValue(ctx, dbTracerQueryCtxKey, &traceQueryData{
++		startTime: time.Now(),
++		sql:       data.SQL,
++		args:      data.Args,
++		qMD:       qMD,
++	})
++}
++
++func (dt *dbTracer) TraceQueryEnd(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryEndData) {
++	traceData, ok := ctx.Value(dbTracerQueryCtxKey).(*traceQueryData)
++	if !ok || traceData == nil {
++		return
++	}
++
++	interval := time.Since(traceData.startTime)
++
++	dt.recordDBOperationHistogramMetric(ctx, "query", traceData.qMD, interval, data.Err)
++
++	span := trace.SpanFromContext(ctx)
++	if !span.SpanContext().IsValid() {
++		return
++	}
++	defer span.End()
++
++	var logAttrs []slog.Attr
++	var level slog.Level
++
++	if data.Err != nil {
++		dt.recordSpanError(span, data.Err)
++		logAttrs = append(logAttrs, slog.String("error", data.Err.Error()))
++		level = slog.LevelError
++	} else {
++		span.SetStatus(codes.Ok, "")
++		logAttrs = append(logAttrs, slog.String("commandTag", data.CommandTag.String()))
++		level = slog.LevelInfo
++	}
++
++	if dt.shouldLog(data.Err) {
++		if traceData.qMD != nil {
++			logAttrs = append(logAttrs,
++				slog.String("query_name", traceData.qMD.name),
++				slog.String("query_command", traceData.qMD.command),
++			)
++		}
++
++		logAttrs = append(logAttrs, slog.String("sql", traceData.sql),
++			slog.Any("args", dt.logQueryArgs(traceData.args)),
++			slog.Duration("time", interval),
++			slog.Uint64("pid", uint64(extractConnectionID(conn))),
++		)
++
++		dt.logger.LogAttrs(ctx, level,
++			"query",
++			logAttrs...,
++		)
++	}
++}
+diff --git a/src/local/sqlc-pgx-monitoring/dbtracer/tracerelease.go b/src/local/sqlc-pgx-monitoring/dbtracer/tracerelease.go
+new file mode 100644
+index 000000000..0da479a02
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/dbtracer/tracerelease.go
+@@ -0,0 +1,17 @@
++package dbtracer
++
++import (
++	"context"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++	"go.opentelemetry.io/otel/metric"
++)
++
++var pgxPoolConnOperationReleased = PGXPoolConnOperationKey.String("release")
++
++// TraceRelease implements Tracer.
++func (dt *dbTracer) TraceRelease(_ *pgxpool.Pool, _ pgxpool.TraceReleaseData) {
++	dt.connReleaseCounter.Add(context.Background(), 1, metric.WithAttributes(
++		pgxPoolConnOperationReleased,
++	))
++}
+diff --git a/src/local/sqlc-pgx-monitoring/go.mod b/src/local/sqlc-pgx-monitoring/go.mod
+new file mode 100644
+index 000000000..d05f9f971
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/go.mod
+@@ -0,0 +1,24 @@
++module github.com/amirsalarsafaei/sqlc-pgx-monitoring
++
++go 1.25.0
++
++toolchain go1.25.7
++
++require (
++	github.com/jackc/pgx/v5 v5.8.0
++	go.opentelemetry.io/otel v1.42.0
++	go.opentelemetry.io/otel/metric v1.42.0
++	go.opentelemetry.io/otel/trace v1.42.0
++)
++
++require (
++	github.com/cespare/xxhash/v2 v2.3.0 // indirect
++	github.com/go-logr/logr v1.4.3 // indirect
++	github.com/go-logr/stdr v1.2.2 // indirect
++	github.com/jackc/pgpassfile v1.0.0 // indirect
++	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
++	github.com/jackc/puddle/v2 v2.2.2 // indirect
++	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
++	golang.org/x/sync v0.19.0 // indirect
++	golang.org/x/text v0.32.0 // indirect
++)
+diff --git a/src/local/sqlc-pgx-monitoring/go.sum b/src/local/sqlc-pgx-monitoring/go.sum
+new file mode 100644
+index 000000000..bfa140fb0
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/go.sum
+@@ -0,0 +1,43 @@
++github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
++github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
++github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
++github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
++github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
++github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
++github.com/go-logr/stdr v1.2.2 h1:hSWxHoqTgW2S2qGc0LTAI563KZ5YKYRhT3MFKZMbjag=
++github.com/go-logr/stdr v1.2.2/go.mod h1:mMo/vtBO5dYbehREoey6XUKy/eSumjCCveDpRre4VKE=
++github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
++github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
++github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
++github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
++github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
++github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761/go.mod h1:5TJZWKEWniPve33vlWYSoGYefn3gLQRzjfDlhSJ9ZKM=
++github.com/jackc/pgx/v5 v5.8.0 h1:TYPDoleBBme0xGSAX3/+NujXXtpZn9HBONkQC7IEZSo=
++github.com/jackc/pgx/v5 v5.8.0/go.mod h1:QVeDInX2m9VyzvNeiCJVjCkNFqzsNb43204HshNSZKw=
++github.com/jackc/puddle/v2 v2.2.2 h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=
++github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
++github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
++github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
++github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
++github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
++github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
++github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
++github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
++go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
++go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
++go.opentelemetry.io/otel v1.42.0 h1:lSQGzTgVR3+sgJDAU/7/ZMjN9Z+vUip7leaqBKy4sho=
++go.opentelemetry.io/otel v1.42.0/go.mod h1:lJNsdRMxCUIWuMlVJWzecSMuNjE7dOYyWlqOXWkdqCc=
++go.opentelemetry.io/otel/metric v1.42.0 h1:2jXG+3oZLNXEPfNmnpxKDeZsFI5o4J+nz6xUlaFdF/4=
++go.opentelemetry.io/otel/metric v1.42.0/go.mod h1:RlUN/7vTU7Ao/diDkEpQpnz3/92J9ko05BIwxYa2SSI=
++go.opentelemetry.io/otel/trace v1.42.0 h1:OUCgIPt+mzOnaUTpOQcBiM/PLQ/Op7oq6g4LenLmOYY=
++go.opentelemetry.io/otel/trace v1.42.0/go.mod h1:f3K9S+IFqnumBkKhRJMeaZeNk9epyhnCmQh/EysQCdc=
++golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
++golang.org/x/sync v0.19.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
++golang.org/x/text v0.32.0 h1:ZD01bjUt1FQ9WJ0ClOL5vxgxOI/sVCNgX1YtKwcY0mU=
++golang.org/x/text v0.32.0/go.mod h1:o/rUWzghvpD5TXrTIBuJU77MTaN0ljMWE47kxGJQ7jY=
++gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
++gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
++gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
++gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+diff --git a/src/local/sqlc-pgx-monitoring/main.go b/src/local/sqlc-pgx-monitoring/main.go
+new file mode 100644
+index 000000000..38dd16da6
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/main.go
+@@ -0,0 +1,3 @@
++package main
++
++func main() {}
+diff --git a/src/local/sqlc-pgx-monitoring/poolstatus/pgxpoolotel.go b/src/local/sqlc-pgx-monitoring/poolstatus/pgxpoolotel.go
+new file mode 100644
+index 000000000..fea87ad19
+--- /dev/null
++++ b/src/local/sqlc-pgx-monitoring/poolstatus/pgxpoolotel.go
+@@ -0,0 +1,240 @@
++package poolstatus
++
++import (
++	"context"
++	"fmt"
++	"time"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++	"go.opentelemetry.io/otel"
++	"go.opentelemetry.io/otel/attribute"
++	"go.opentelemetry.io/otel/metric"
++	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
++)
++
++const (
++	// instrumentationName is the name of the instrumentation library.
++	instrumentationName = "github.com/amirsalarsafaei/sqlc-pgx-monitoring"
++	// stateKey is an attribute key for the state of a connection (e.g., "used", "idle").
++	stateKey = attribute.Key("state")
++	// reasonKey is an attribute key for the reason a connection was closed (e.g., "lifetime", "idletime").
++	reasonKey = attribute.Key("reason")
++)
++
++var (
++	// stateUsed is an attribute for a connection that is currently in use.
++	stateUsed = stateKey.String("used")
++	// stateIdle is an attribute for a connection that is currently idle.
++	stateIdle = stateKey.String("idle")
++	// reasonLifetime is an attribute for a connection closed due to exceeding its maximum lifetime.
++	reasonLifetime = reasonKey.String("lifetime")
++	// reasonIdleTime is an attribute for a connection closed due to exceeding its maximum idle time.
++	reasonIdleTime = reasonKey.String("idletime")
++)
++
++type Stat interface {
++	AcquireCount() int64
++	AcquireDuration() time.Duration
++	AcquiredConns() int32
++	CanceledAcquireCount() int64
++	ConstructingConns() int32
++	EmptyAcquireCount() int64
++	EmptyAcquireWaitTime() time.Duration
++	IdleConns() int32
++	MaxConns() int32
++	MaxIdleDestroyCount() int64
++	MaxLifetimeDestroyCount() int64
++	NewConnsCount() int64
++	TotalConns() int32
++}
++
++// It is implemented by *pgxpool.Pool.
++type Stater interface {
++	Stat() *pgxpool.Stat
++}
++
++type stater interface {
++	Stat() Stat
++}
++
++// config holds the configuration for the metrics registration.
++type config struct {
++	meter      metric.Meter
++	attributes []attribute.KeyValue
++}
++
++// Option is a function that configures the metrics registration.
++type Option func(*config)
++
++// WithMeterProvider sets the OpenTelemetry MeterProvider to be used for metrics.
++// If not provided, the global MeterProvider will be used.
++func WithMeterProvider(provider metric.MeterProvider) Option {
++	return func(c *config) {
++		c.meter = provider.Meter(
++			instrumentationName,
++		)
++	}
++}
++
++// WithAttributes adds a set of attributes to all registered metrics.
++func WithAttributes(attrs ...attribute.KeyValue) Option {
++	return func(c *config) {
++		c.attributes = attrs
++	}
++}
++
++func Register(stater Stater, opts ...Option) error {
++	return register(newStaterWrapper(stater), opts...)
++}
++
++func register(stater stater, opts ...Option) error {
++	cfg := &config{
++		meter: otel.GetMeterProvider().Meter(
++			instrumentationName,
++		),
++	}
++	for _, opt := range opts {
++		opt(cfg)
++	}
++
++	usage, err := cfg.meter.Int64ObservableGauge(
++		semconv.DBClientConnectionsUsageName,
++		metric.WithDescription(semconv.DBClientConnectionsUsageDescription),
++		metric.WithUnit(semconv.DBClientConnectionsUsageUnit),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create usage metric: %w", err)
++	}
++
++	maxConns, err := cfg.meter.Int64ObservableGauge(
++		semconv.DBClientConnectionMaxName,
++		metric.WithDescription(semconv.DBClientConnectionMaxDescription),
++		metric.WithUnit(semconv.DBClientConnectionMaxUnit),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create max connections metric: %w", err)
++	}
++
++	pending, err := cfg.meter.Int64ObservableGauge(
++		semconv.DBClientConnectionsPendingRequestsName,
++		metric.WithDescription(semconv.DBClientConnectionsPendingRequestsDescription),
++		metric.WithUnit(semconv.DBClientConnectionPendingRequestsUnit),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create pending requests metric: %w", err)
++	}
++
++	acquireCount, err := cfg.meter.Int64ObservableCounter(
++		"pgx.pool.acquires",
++		metric.WithDescription("Cumulative count of successful acquires from the pool."),
++		metric.WithUnit("{request}"),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create acquire count metric: %w", err)
++	}
++
++	canceledAcquireCount, err := cfg.meter.Int64ObservableCounter(
++		"pgx.pool.canceled_acquires",
++		metric.WithDescription("Cumulative count of acquires from the pool that were canceled by a context."),
++		metric.WithUnit("{request}"),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create canceled acquire count metric: %w", err)
++	}
++
++	waitedForAcquireCount, err := cfg.meter.Int64ObservableCounter(
++		"pgx.pool.waited_for_acquires",
++		metric.WithDescription("Cumulative count of acquires that waited for a resource to be released or constructed because the pool was empty."),
++		metric.WithUnit("{request}"),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create waited for acquire count metric: %w", err)
++	}
++
++	connsCreated, err := cfg.meter.Int64ObservableCounter(
++		"pgx.pool.connections.created",
++		metric.WithDescription("Cumulative count of new connections opened."),
++		metric.WithUnit("{connection}"),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create connections created metric: %w", err)
++	}
++
++	connsDestroyed, err := cfg.meter.Int64ObservableCounter(
++		"pgx.pool.connections.destroyed",
++		metric.WithDescription("Cumulative count of connections destroyed, with a reason attribute."),
++		metric.WithUnit("{connection}"),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create connections destroyed metric: %w", err)
++	}
++
++	acquireDuration, err := cfg.meter.Float64ObservableCounter(
++		"pgx.pool.acquire.duration",
++		metric.WithDescription("Total duration of all successful acquires from the pool."),
++		metric.WithUnit("s"),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create acquire duration metric: %w", err)
++	}
++
++	// This is the newly added metric.
++	waitedForAcquireDuration, err := cfg.meter.Float64ObservableCounter(
++		"pgx.pool.acquire.wait.duration",
++		metric.WithDescription("The cumulative time successful acquires from the pool waited for a resource to be released or constructed because the pool was empty."),
++		metric.WithUnit("s"),
++	)
++	if err != nil {
++		return fmt.Errorf("failed to create waited for acquire duration metric: %w", err)
++	}
++
++	_, err = cfg.meter.RegisterCallback(
++		func(_ context.Context, o metric.Observer) error {
++			stats := stater.Stat()
++			obsOpts := metric.WithAttributes(cfg.attributes...)
++
++			// Gauges
++			o.ObserveInt64(usage, int64(stats.AcquiredConns()), metric.WithAttributes(stateUsed), obsOpts)
++			o.ObserveInt64(usage, int64(stats.IdleConns()), metric.WithAttributes(stateIdle), obsOpts)
++			o.ObserveInt64(maxConns, int64(stats.MaxConns()), obsOpts)
++			o.ObserveInt64(pending, int64(stats.ConstructingConns()), obsOpts)
++
++			// Counters
++			o.ObserveInt64(acquireCount, stats.AcquireCount(), obsOpts)
++			o.ObserveInt64(canceledAcquireCount, stats.CanceledAcquireCount(), obsOpts)
++			o.ObserveInt64(waitedForAcquireCount, stats.EmptyAcquireCount(), obsOpts)
++			o.ObserveInt64(connsCreated, stats.NewConnsCount(), obsOpts)
++
++			o.ObserveInt64(connsDestroyed, stats.MaxLifetimeDestroyCount(), metric.WithAttributes(reasonLifetime), obsOpts)
++			o.ObserveInt64(connsDestroyed, stats.MaxIdleDestroyCount(), metric.WithAttributes(reasonIdleTime), obsOpts)
++
++			// Duration Counters
++			o.ObserveFloat64(acquireDuration, stats.AcquireDuration().Seconds(), obsOpts)
++			// Observe the newly added metric.
++			o.ObserveFloat64(waitedForAcquireDuration, stats.EmptyAcquireWaitTime().Seconds(), obsOpts)
++
++			return nil
++		},
++		// Register all instruments with the callback.
++		usage, maxConns, pending, acquireCount, canceledAcquireCount, waitedForAcquireCount,
++		connsCreated, connsDestroyed, acquireDuration, waitedForAcquireDuration,
++	)
++	if err != nil {
++		return fmt.Errorf("failed to register metric callback: %w", err)
++	}
++
++	return nil
++}
++
++type staterWrapper struct {
++	s Stater
++}
++
++func (s *staterWrapper) Stat() Stat {
++	return s.s.Stat()
++}
++func newStaterWrapper(stater Stater) stater {
++	return &staterWrapper{
++		s: stater,
++	}
++}
+diff --git a/src/pkg/config/manager.go b/src/pkg/config/manager.go
+index 1854e0ac4..08e4592bb 100644
+--- a/src/pkg/config/manager.go
++++ b/src/pkg/config/manager.go
+@@ -173,7 +173,8 @@ func (c *CfgManager) GetDatabaseCfg() *models.Database {
+ 			HealthCheckPeriod: c.Get(ctx, common.PostGreSQLHealthCheckPeriod).GetDuration(),
+ 			ConnectTimeout:    c.Get(ctx, common.PostGreSQLConnectTimeout).GetDuration(),
+ 			MinConns:          int32(c.Get(ctx, common.PostGreSQLMinConns).GetInt()),
+-			URL: c.Get(ctx, common.PostGreSQLURL).GetString(),
++			URL:               c.Get(ctx, common.PostGreSQLURL).GetString(),
++			MetricsEnabled:    c.Get(ctx, common.PostGreSQLMetricsEnabled).GetBool(),
+ 		},
+ 	}
+ }
+diff --git a/taskfile/dev.yml b/taskfile/dev.yml
+index da6d0c13c..c7c492be7 100644
+--- a/taskfile/dev.yml
++++ b/taskfile/dev.yml
+@@ -23,6 +23,7 @@ vars:
+   PORT_REGISTRY:     '{{ add 50000 (mul (atoi .SLOT) 100) }}'
+   PORT_REGISTRYCTL:  '{{ add 8085  (mul (atoi .SLOT) 100) }}'
+   PORT_TRIVY:        '{{ add 8081  (mul (atoi .SLOT) 100) }}'
++  PORT_METRIC:       '{{ add 9090  (mul (atoi .SLOT) 100) }}'
+   PORT_DEBUG_CORE:   '{{ add 2345  (mul (atoi .SLOT) 100) }}'
+   PORT_DEBUG_JOB:    '{{ add 2346  (mul (atoi .SLOT) 100) }}'
+   PORT_DEBUG_REGCTL: '{{ add 2347  (mul (atoi .SLOT) 100) }}'
+@@ -50,6 +51,7 @@ env:
+   PORT_REGISTRY:          '{{.PORT_REGISTRY}}'
+   PORT_REGISTRYCTL:       '{{.PORT_REGISTRYCTL}}'
+   PORT_TRIVY:             '{{.PORT_TRIVY}}'
++  PORT_METRIC:            '{{.PORT_METRIC}}'
+   PORT_DEBUG_CORE:        '{{.PORT_DEBUG_CORE}}'
+   PORT_DEBUG_JOBSERVICE:  '{{.PORT_DEBUG_JOB}}'
+   PORT_DEBUG_REGISTRYCTL: '{{.PORT_DEBUG_REGCTL}}'
+@@ -142,6 +144,7 @@ tasks:
+       echo "  Redis:        localhost:{{.PORT_REDIS}}"
+       echo "  Registry:     localhost:{{.PORT_REGISTRY}}"
+       echo "  RegistryCtl:  localhost:{{.PORT_REGISTRYCTL}}"
++      echo "  Metrics:      http://localhost:{{.PORT_METRIC}}/metrics"
+       echo "  Trivy:        localhost:{{.PORT_TRIVY}}"
+       echo "  Prefix:       {{.PROJECT_PREFIX}}"
+       echo ""

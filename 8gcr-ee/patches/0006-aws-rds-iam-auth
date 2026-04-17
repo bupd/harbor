@@ -1,24 +1,32 @@
-feat(dao): add AWS RDS IAM authentication support
+feat(dao): Add AWS RDS IAM authentication support
 
 From: Prasanth Baskar <bupdprasanth@gmail.com>
 
+Add support for AWS RDS IAM authentication for PostgreSQL connections.
 
+When PostgreSQL UseIAMAuth is enabled, the driver uses the AWS SDK to
+generate an auth token for each connection attempt, removing the need
+for static passwords.
+
+New configuration keys: POSTGRESQL_USE_IAM_AUTH, POSTGRESQL_AWS_REGION.
+
+From: Vadim Bauer <vb@8gears.com>
 ---
  docs/aws-native-deployment/README.md              |  183 ++++++++++++++++++++
  docs/aws-native-deployment/values-aws-native.yaml |   97 +++++++++++
  src/cmd/exporter/main.go                          |    2 
  src/cmd/standalone-db-migrator/main.go            |   17 +-
- src/common/const.go                               |    6 -
- src/common/dao/pgsql.go                           |   36 ++++
+ src/common/const.go                               |    2 
+ src/common/dao/pgsql.go                           |   32 +++-
  src/common/dao/pgsql_iam.go                       |  110 ++++++++++++
  src/common/dao/pgsql_iam_test.go                  |  192 +++++++++++++++++++++
  src/common/models/database.go                     |    2 
  src/go.mod                                        |   15 ++
  src/go.sum                                        |   30 +++
  src/lib/config/metadata/metadatalist.go           |    2 
- src/lib/config/systemconfig.go                    |    4 
- src/pkg/config/manager.go                         |    4 
- 14 files changed, 686 insertions(+), 14 deletions(-)
+ src/lib/config/systemconfig.go                    |    2 
+ src/pkg/config/manager.go                         |    2 
+ 14 files changed, 679 insertions(+), 9 deletions(-)
  create mode 100644 docs/aws-native-deployment/README.md
  create mode 100644 docs/aws-native-deployment/values-aws-native.yaml
  create mode 100644 src/common/dao/pgsql_iam.go
@@ -317,15 +325,15 @@ index 000000000..8c00f01a1
 +exporter:
 +  enabled: false
 diff --git a/src/cmd/exporter/main.go b/src/cmd/exporter/main.go
-index dcde312d8..b8a4bafd0 100644
+index 614b931c9..bae7be768 100644
 --- a/src/cmd/exporter/main.go
 +++ b/src/cmd/exporter/main.go
-@@ -56,6 +56,8 @@ func main() {
- 			HealthCheckPeriod: viper.GetDuration("database.health_check_period"),
- 			ConnectTimeout:    viper.GetDuration("database.connect_timeout"),
- 			MinConns:          int32(viper.GetInt("database.min_conns")),
-+			UseIAMAuth:        viper.GetBool("database.use_iam_auth"),
-+			AWSRegion:         viper.GetString("database.aws_region"),
+@@ -61,6 +61,8 @@ func main() {
+ 			// Prometheus exporter), so enabling pgx metrics here would attach
+ 			// them to a no-op meter and they'd never be scraped. Keep off.
+ 			MetricsEnabled: false,
++			UseIAMAuth:     viper.GetBool("database.use_iam_auth"),
++			AWSRegion:      viper.GetString("database.aws_region"),
  		},
  	}
  	if err := dao.InitDatabase(dbCfg); err != nil {
@@ -372,24 +380,20 @@ index bff3ee619..e8d1cde1b 100644
  	}
  
 diff --git a/src/common/const.go b/src/common/const.go
-index c75d6b324..058fd838b 100644
+index 017e0bf37..f87644af3 100644
 --- a/src/common/const.go
 +++ b/src/common/const.go
-@@ -65,8 +65,10 @@ const (
- 	PostGreSQLHealthCheckPeriod      = "postgresql_health_check_period"
- 	PostGreSQLConnectTimeout         = "postgresql_connect_timeout"
+@@ -67,6 +67,8 @@ const (
  	PostGreSQLMinConns               = "postgresql_min_conns"
--	PostGreSQLURL    = "postgresql_url"
--	SelfRegistration = "self_registration"
-+	PostGreSQLURL                    = "postgresql_url"
+ 	PostGreSQLURL                    = "postgresql_url"
+ 	PostGreSQLMetricsEnabled         = "postgresql_metrics_enabled"
 +	PostGreSQLUseIAMAuth             = "postgresql_use_iam_auth"
 +	PostGreSQLAWSRegion              = "postgresql_aws_region"
-+	SelfRegistration                 = "self_registration"
+ 	SelfRegistration                 = "self_registration"
  	CoreURL                          = "core_url"
  	CoreLocalURL                     = "core_local_url"
- 	JobServiceURL                    = "jobservice_url"
 diff --git a/src/common/dao/pgsql.go b/src/common/dao/pgsql.go
-index 0694970ce..515c5dcbd 100644
+index ba862f237..97fad1e41 100644
 --- a/src/common/dao/pgsql.go
 +++ b/src/common/dao/pgsql.go
 @@ -52,6 +52,10 @@ func NewPGSQL(cfg *models.PostGreSQL) Database {
@@ -403,12 +407,10 @@ index 0694970ce..515c5dcbd 100644
  	return &pgsql{cfg: cfg}
  }
  
-@@ -65,7 +69,16 @@ func (p *pgsql) Register(alias ...string) error {
+@@ -73,6 +77,13 @@ func (p *pgsql) Register(alias ...string) error {
  		}
+ 		opts = append(opts, dbpool.WithTracer(tracer))
  	}
- 
--	pool, err := dbpool.New(context.Background(), p.cfg)
-+	var opts []dbpool.Option
 +	if p.cfg.UseIAMAuth {
 +		opt, err := iamAuthOption(context.Background(), p.cfg)
 +		if err != nil {
@@ -416,12 +418,10 @@ index 0694970ce..515c5dcbd 100644
 +		}
 +		opts = append(opts, opt)
 +	}
-+
-+	pool, err := dbpool.New(context.Background(), p.cfg, opts...)
+ 
+ 	pool, err := dbpool.New(context.Background(), p.cfg, opts...)
  	if err != nil {
- 		return fmt.Errorf("dbpool: %w", err)
- 	}
-@@ -106,14 +119,29 @@ func (p *pgsql) UpgradeSchema() error {
+@@ -122,14 +133,29 @@ func (p *pgsql) UpgradeSchema() error {
  
  // NewMigrator creates a golang-migrate instance. The scheme is "pgx5" because
  // golang-migrate's pgx/v5 driver registers under that name (not "pgx", which
@@ -769,21 +769,21 @@ index 000000000..cbd5698ec
 +	}
 +}
 diff --git a/src/common/models/database.go b/src/common/models/database.go
-index 7da9b776a..b76538b21 100644
+index 3f3d86dd0..91f97d435 100644
 --- a/src/common/models/database.go
 +++ b/src/common/models/database.go
-@@ -39,4 +39,6 @@ type PostGreSQL struct {
- 	ConnectTimeout    time.Duration `json:"connect_timeout"`
+@@ -40,4 +40,6 @@ type PostGreSQL struct {
  	MinConns          int32         `json:"min_conns"`
  	URL               string        `json:"url"`
+ 	MetricsEnabled    bool          `json:"metrics_enabled"`
 +	UseIAMAuth        bool          `json:"use_iam_auth"`
 +	AWSRegion         string        `json:"aws_region,omitempty"`
  }
 diff --git a/src/go.mod b/src/go.mod
-index 6642e8558..6853f6e08 100644
+index fd72112b0..fa76a60f6 100644
 --- a/src/go.mod
 +++ b/src/go.mod
-@@ -98,6 +98,21 @@ require (
+@@ -104,6 +104,21 @@ require (
  	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
  	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
  	github.com/Unknwon/goconfig v0.0.0-20160216183935-5f601ca6ef4d // indirect
@@ -806,7 +806,7 @@ index 6642e8558..6853f6e08 100644
  	github.com/beorn7/perks v1.0.1 // indirect
  	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 diff --git a/src/go.sum b/src/go.sum
-index eed39486e..674ed7efd 100644
+index 09ea8823c..84bf3d2d3 100644
 --- a/src/go.sum
 +++ b/src/go.sum
 @@ -62,6 +62,36 @@ github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2/go.mod h1:W
@@ -847,43 +847,39 @@ index eed39486e..674ed7efd 100644
  github.com/beego/beego/v2 v2.3.8/go.mod h1:8vl9+RrXqvodrl9C8yivX1e6le6deCK6RWeq8R7gTTg=
  github.com/beego/i18n v0.0.0-20140604031826-e87155e8f0c0 h1:fQaDnUQvBXHHQdGBu9hz8nPznB4BeiPQokvmQVjmNEw=
 diff --git a/src/lib/config/metadata/metadatalist.go b/src/lib/config/metadata/metadatalist.go
-index 3d8a3526f..35c303525 100644
+index 18dfa9cbc..c14d489a4 100644
 --- a/src/lib/config/metadata/metadatalist.go
 +++ b/src/lib/config/metadata/metadatalist.go
-@@ -117,6 +117,8 @@ var (
- 		{Name: common.PostGreSQLConnectTimeout, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_CONNECT_TIMEOUT", DefaultValue: "10s", ItemType: &DurationType{}, Editable: false},
+@@ -118,6 +118,8 @@ var (
  		{Name: common.PostGreSQLMinConns, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_MIN_CONNS", DefaultValue: "2", ItemType: &IntType{}, Editable: false},
  		{Name: common.PostGreSQLURL, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_URL", DefaultValue: "", ItemType: &StringType{}, Editable: false},
+ 		{Name: common.PostGreSQLMetricsEnabled, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_METRICS_ENABLED", DefaultValue: "false", ItemType: &BoolType{}, Editable: false},
 +		{Name: common.PostGreSQLUseIAMAuth, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_USE_IAM_AUTH", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: "Enable AWS RDS IAM authentication"},
 +		{Name: common.PostGreSQLAWSRegion, Scope: SystemScope, Group: DatabaseGroup, EnvKey: "POSTGRESQL_AWS_REGION", DefaultValue: "", ItemType: &StringType{}, Editable: false, Description: "AWS region for RDS IAM authentication"},
  
  		{Name: common.ProjectCreationRestriction, Scope: UserScope, Group: BasicGroup, EnvKey: "PROJECT_CREATION_RESTRICTION", DefaultValue: common.ProCrtRestrEveryone, ItemType: &ProjectCreationRestrictionType{}, Editable: false, Description: `Indicate who can create projects, it could be ''adminonly'' or ''everyone''.`},
  		{Name: common.ReadOnly, Scope: UserScope, Group: BasicGroup, EnvKey: "READ_ONLY", DefaultValue: "false", ItemType: &BoolType{}, Editable: false, Description: `The flag to indicate whether Harbor is in readonly mode.`},
 diff --git a/src/lib/config/systemconfig.go b/src/lib/config/systemconfig.go
-index 649a336ce..53e86e198 100644
+index 55ba1966b..3fdfbbad9 100644
 --- a/src/lib/config/systemconfig.go
 +++ b/src/lib/config/systemconfig.go
-@@ -268,7 +268,9 @@ func Database() (*models.Database, error) {
- 		HealthCheckPeriod: DefaultMgr().Get(backgroundCtx, common.PostGreSQLHealthCheckPeriod).GetDuration(),
- 		ConnectTimeout:    DefaultMgr().Get(backgroundCtx, common.PostGreSQLConnectTimeout).GetDuration(),
+@@ -270,6 +270,8 @@ func Database() (*models.Database, error) {
  		MinConns:          int32(DefaultMgr().Get(backgroundCtx, common.PostGreSQLMinConns).GetInt()),
--		URL: DefaultMgr().Get(backgroundCtx, common.PostGreSQLURL).GetString(),
-+		URL:               DefaultMgr().Get(backgroundCtx, common.PostGreSQLURL).GetString(),
+ 		URL:               DefaultMgr().Get(backgroundCtx, common.PostGreSQLURL).GetString(),
+ 		MetricsEnabled:    DefaultMgr().Get(backgroundCtx, common.PostGreSQLMetricsEnabled).GetBool(),
 +		UseIAMAuth:        DefaultMgr().Get(backgroundCtx, common.PostGreSQLUseIAMAuth).GetBool(),
 +		AWSRegion:         DefaultMgr().Get(backgroundCtx, common.PostGreSQLAWSRegion).GetString(),
  	}
  	database.PostGreSQL = postgresql
  
 diff --git a/src/pkg/config/manager.go b/src/pkg/config/manager.go
-index 1854e0ac4..84ef93a74 100644
+index 08e4592bb..723381b96 100644
 --- a/src/pkg/config/manager.go
 +++ b/src/pkg/config/manager.go
-@@ -173,7 +173,9 @@ func (c *CfgManager) GetDatabaseCfg() *models.Database {
- 			HealthCheckPeriod: c.Get(ctx, common.PostGreSQLHealthCheckPeriod).GetDuration(),
- 			ConnectTimeout:    c.Get(ctx, common.PostGreSQLConnectTimeout).GetDuration(),
+@@ -175,6 +175,8 @@ func (c *CfgManager) GetDatabaseCfg() *models.Database {
  			MinConns:          int32(c.Get(ctx, common.PostGreSQLMinConns).GetInt()),
--			URL: c.Get(ctx, common.PostGreSQLURL).GetString(),
-+			URL:               c.Get(ctx, common.PostGreSQLURL).GetString(),
+ 			URL:               c.Get(ctx, common.PostGreSQLURL).GetString(),
+ 			MetricsEnabled:    c.Get(ctx, common.PostGreSQLMetricsEnabled).GetBool(),
 +			UseIAMAuth:        c.Get(ctx, common.PostGreSQLUseIAMAuth).GetBool(),
 +			AWSRegion:         c.Get(ctx, common.PostGreSQLAWSRegion).GetString(),
  		},
