@@ -10,10 +10,16 @@ for static passwords.
 
 New configuration keys: POSTGRESQL_USE_IAM_AUTH, POSTGRESQL_AWS_REGION.
 
+The docs/aws-native-deployment/ tutorial is pinned to the harbor-next
+3.0.0 chart (oci://8gears.container-registry.com/8gcr/charts/harbor-next)
+and uses core.extraEnv / jobservice.extraEnv + {component}.serviceAccount
+to match the chart's actual schema, so POSTGRESQL_USE_IAM_AUTH reaches
+the container and cfg.UseIAMAuth activates at runtime.
+
 From: Vadim Bauer <vb@8gears.com>
 ---
- docs/aws-native-deployment/README.md              |  183 ++++++++++++++++++++
- docs/aws-native-deployment/values-aws-native.yaml |   97 +++++++++++
+ docs/aws-native-deployment/README.md              |  246 ++++++++++++++++++++
+ docs/aws-native-deployment/values-aws-native.yaml |  103 ++++++++++
  src/cmd/exporter/main.go                          |    2 
  src/cmd/standalone-db-migrator/main.go            |   17 +-
  src/common/const.go                               |    2 
@@ -26,7 +32,7 @@ From: Vadim Bauer <vb@8gears.com>
  src/lib/config/metadata/metadatalist.go           |    2 
  src/lib/config/systemconfig.go                    |    2 
  src/pkg/config/manager.go                         |    2 
- 14 files changed, 679 insertions(+), 9 deletions(-)
+ 14 files changed, 748 insertions(+), 9 deletions(-)
  create mode 100644 docs/aws-native-deployment/README.md
  create mode 100644 docs/aws-native-deployment/values-aws-native.yaml
  create mode 100644 src/common/dao/pgsql_iam.go
@@ -34,10 +40,10 @@ From: Vadim Bauer <vb@8gears.com>
 
 diff --git a/docs/aws-native-deployment/README.md b/docs/aws-native-deployment/README.md
 new file mode 100644
-index 000000000..2ca9dee42
+index 000000000..6fa24393e
 --- /dev/null
 +++ b/docs/aws-native-deployment/README.md
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,246 @@
 +# Harbor on AWS: Zero-Static-Secret Deployment
 +
 +Deploy Harbor on EKS with native AWS authentication: **RDS IAM Database Authentication** and **S3 IRSA**.
@@ -89,8 +95,34 @@ index 000000000..2ca9dee42
 +### 4. Create RDS Instance
 +
 +Create the database first so its resource ID is available for the IAM policy.
++Put it in the same VPC as the EKS cluster, in at least two subnets, and open
++TCP/5432 from the cluster's node security group.
 +
 +```bash
++# Reuse the cluster's VPC + subnets:
++export VPC_ID=$(aws eks describe-cluster --name $CLUSTER_NAME --region $AWS_REGION \
++  --query "cluster.resourcesVpcConfig.vpcId" --output text)
++export SUBNET_IDS=$(aws ec2 describe-subnets --region $AWS_REGION \
++  --filters "Name=vpc-id,Values=$VPC_ID" \
++  --query "Subnets[].SubnetId" --output text | tr '\t' ' ')
++export NODE_SG=$(aws eks describe-cluster --name $CLUSTER_NAME --region $AWS_REGION \
++  --query "cluster.resourcesVpcConfig.clusterSecurityGroupId" --output text)
++
++# DB subnet group (≥2 subnets in ≥2 AZs):
++aws rds create-db-subnet-group \
++  --db-subnet-group-name ${CLUSTER_NAME}-subnets \
++  --db-subnet-group-description "Harbor RDS" \
++  --subnet-ids $SUBNET_IDS --region $AWS_REGION
++
++# Security group that allows the EKS node SG to reach 5432:
++export DB_SG=$(aws ec2 create-security-group \
++  --group-name ${CLUSTER_NAME}-db-sg \
++  --description "Harbor RDS from EKS" \
++  --vpc-id $VPC_ID --region $AWS_REGION --query 'GroupId' --output text)
++aws ec2 authorize-security-group-ingress \
++  --group-id $DB_SG --protocol tcp --port 5432 \
++  --source-group $NODE_SG --region $AWS_REGION
++
 +aws rds create-db-instance \
 +    --db-instance-identifier $DB_INSTANCE_ID \
 +    --db-instance-class db.t3.medium \
@@ -101,8 +133,8 @@ index 000000000..2ca9dee42
 +    --allocated-storage 20 \
 +    --db-name $DB_NAME \
 +    --enable-iam-database-authentication \
-+    --vpc-security-group-ids <your-sg-id> \
-+    --db-subnet-group-name <your-subnet-group> \
++    --vpc-security-group-ids $DB_SG \
++    --db-subnet-group-name ${CLUSTER_NAME}-subnets \
 +    --no-publicly-accessible \
 +    --region $AWS_REGION
 +
@@ -160,47 +192,84 @@ index 000000000..2ca9dee42
 +
 +### 6. Create IRSA Service Account
 +
++This creates a Kubernetes ServiceAccount in the `harbor` namespace with the
++`eks.amazonaws.com/role-arn` annotation — all Harbor components in the values
++file reference this same SA so they all use the same IAM role.
++
 +```bash
 +eksctl create iamserviceaccount \
-+  --cluster=$CLUSTER_NAME \
-+  --name=$SA_NAME \
-+  --namespace=$NAMESPACE \
++  --cluster=$CLUSTER_NAME --region=$AWS_REGION \
++  --name=$SA_NAME --namespace=$NAMESPACE \
 +  --attach-policy-arn="arn:aws:iam::$AWS_ACCOUNT_ID:policy/HarborNativePolicy" \
 +  --approve
 +```
 +
 +### 7. Configure IAM Database User
 +
-+Connect to RDS and create the IAM-enabled user:
++Connect to RDS from inside the cluster (no need to expose RDS publicly) and
++create the IAM-enabled user:
 +
-+```sql
++```bash
++kubectl -n $NAMESPACE run psql --rm -i --image=postgres:16 --restart=Never \
++  --env PGPASSWORD="<yourMasterPassword>" \
++  --command -- psql -h $DB_ENDPOINT -U harbor_admin -d $DB_NAME -v ON_ERROR_STOP=1 <<SQL
 +CREATE USER harbor_iam_user WITH LOGIN;
 +GRANT rds_iam TO harbor_iam_user;
-+GRANT ALL PRIVILEGES ON DATABASE <your-db-name> TO harbor_iam_user;
++GRANT ALL PRIVILEGES ON DATABASE registry TO harbor_iam_user;
 +GRANT ALL ON SCHEMA public TO harbor_iam_user;
++SQL
 +```
 +
 +### 8. Deploy Harbor
 +
-+Update `values-aws-native.yaml` with your database endpoint, region, and bucket name, then:
++Edit `values-aws-native.yaml` to substitute the five placeholders (DB endpoint,
++region, bucket, image registry, image tag), then install from the `harbor-next`
++chart:
 +
 +```bash
-+sed -i "s|<YOUR_DB_ENDPOINT>|$DB_ENDPOINT|g" values-aws-native.yaml
++sed -i "s|<YOUR_DB_ENDPOINT>|$DB_ENDPOINT|g;
++        s|<YOUR_AWS_REGION>|$AWS_REGION|g;
++        s|<YOUR_BUCKET_NAME>|$BUCKET_NAME|g" values-aws-native.yaml
++# Also set <YOUR_IMAGE_REGISTRY> and <YOUR_IMAGE_TAG> manually.
 +
-+helm upgrade --install my-harbor oci://8gears.container-registry.com/8gcr/harbor \
++helm upgrade --install my-harbor \
++  oci://8gears.container-registry.com/8gcr/charts/harbor-next \
 +  --version 3.0.0 \
-+  --namespace $NAMESPACE \
-+  --create-namespace \
++  --namespace $NAMESPACE --create-namespace \
 +  -f values-aws-native.yaml
 +```
 +
 +## Verification
 +
 +```bash
-+kubectl get pods -n $NAMESPACE
-+kubectl logs -l app=harbor-core -n $NAMESPACE --tail=50
-+# Look for: "IAM Auth: Enabled for region=..."
++# 1. Pods up
++kubectl -n $NAMESPACE get pods
++
++# 2. IAM auth activated in core
++kubectl -n $NAMESPACE logs deploy/my-harbor-core --tail=200 \
++  | grep -E 'IAM Auth|migrated successfully'
++# Expect:
++#   IAM Auth: Enabled for region=... endpoint=...:5432 user=harbor_iam_user
++#   IAM Auth: Token generated for database migration
++#   The database has been migrated successfully
++
++# 3. S3 IRSA wired to registry pod
++kubectl -n $NAMESPACE get pod -l app.kubernetes.io/component=registry -o yaml \
++  | grep -E 'AWS_ROLE_ARN|AWS_WEB_IDENTITY'
++
++# 4. End-to-end: push an image and confirm S3 objects + DB rows
++kubectl -n $NAMESPACE port-forward svc/my-harbor-core 18080:80 &
++echo 'Harbor12345' | docker login localhost:18080 -u admin --password-stdin
++docker tag alpine:3.19 localhost:18080/library/alpine:3.19
++docker push localhost:18080/library/alpine:3.19
++aws s3 ls s3://$BUCKET_NAME/docker/registry/v2/ --recursive | head
++curl -s -u admin:Harbor12345 \
++  http://localhost:18080/api/v2.0/projects/library/repositories/alpine/artifacts | head -c 200
 +```
++
++The chart doesn't ship an Ingress by default. For external access, set
++`ingress.enabled: true` in the values file and install an Ingress controller
++(ALB, nginx, etc.) that routes to the `my-harbor-core` service.
 +
 +## Environment Variables Reference
 +
@@ -223,35 +292,45 @@ index 000000000..2ca9dee42
 +```
 diff --git a/docs/aws-native-deployment/values-aws-native.yaml b/docs/aws-native-deployment/values-aws-native.yaml
 new file mode 100644
-index 000000000..8c00f01a1
+index 000000000..2e97474df
 --- /dev/null
 +++ b/docs/aws-native-deployment/values-aws-native.yaml
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,103 @@
++# Harbor on AWS: RDS IAM Auth + S3 IRSA
++# Validated against the harbor-next chart 3.0.0:
++#   oci://8gears.container-registry.com/8gcr/charts/harbor-next --version 3.0.0
++#
++# Replace the five placeholders before `helm upgrade`:
++#   <YOUR_DB_ENDPOINT>     RDS endpoint hostname (e.g. harbor-db.XXX.us-east-1.rds.amazonaws.com)
++#   <YOUR_AWS_REGION>      e.g. us-east-1
++#   <YOUR_BUCKET_NAME>     S3 bucket for registry storage
++#   <YOUR_IMAGE_REGISTRY>  where Harbor images are pulled from (e.g. 8gears.container-registry.com/8gcr)
++#   <YOUR_IMAGE_TAG>       image tag (e.g. v2.15.0)
++
 +externalURL: "https://harbor.example.com"
 +
++# Demo password. For production, use `existingSecretAdminPassword` with a
++# Secret from AWS Secrets Manager, external-secrets, or SOPS.
++harborAdminPassword: "Harbor12345"
++
++# Ingress is off by default so the chart installs cleanly without DNS.
++# Enable it in real deployments and point an Ingress controller (ALB, nginx, etc.)
++# at the same DNS name as externalURL above.
 +ingress:
-+  enabled: true
-+  className: "nginx"
-+  annotations:
-+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-+  hosts:
-+    - host: "harbor.example.com"
-+      paths:
-+        - path: /
-+          pathType: Prefix
-+  tls:
-+    - secretName: harbor-tls
-+      hosts:
-+        - harbor.example.com
-+  core: "harbor.example.com"
++  enabled: false
++  # className: "alb"
++  # hosts:
++  #   - host: harbor.example.com
++  # tls:
++  #   - secretName: harbor-tls
++  #     hosts: [harbor.example.com]
 +
 +database:
 +  host: "<YOUR_DB_ENDPOINT>"
 +  port: 5432
 +  username: "harbor_iam_user"
-+  # Required by Helm chart schema but ignored at runtime when IAM auth is
-+  # enabled; the BeforeConnect hook replaces it with an ephemeral IAM token.
++  # Required by the chart schema but ignored at runtime when IAM auth is on:
++  # the BeforeConnect hook in pgsql_iam.go replaces this with an ephemeral token.
 +  password: "placeholder"
 +  database: "registry"
 +  sslmode: "require"
@@ -259,49 +338,45 @@ index 000000000..8c00f01a1
 +core:
 +  replicas: 1
 +  image:
-+    repository: 8gears.container-registry.com/8gcr/harbor-core
-+    tag: v2.15.0
++    repository: <YOUR_IMAGE_REGISTRY>/harbor-core
++    tag: <YOUR_IMAGE_TAG>
++  # Point core at the IRSA-annotated ServiceAccount created by eksctl.
 +  serviceAccount:
 +    create: false
 +    name: "harbor-sa"
-+  securityContext:
-+    readOnlyRootFilesystem: false
-+  config:
-+    POSTGRESQL_USE_IAM_AUTH: "true"
-+    POSTGRESQL_AWS_REGION: "<YOUR_AWS_REGION>"
++  # harbor-next uses `core.extraEnv` (not `core.config`) to inject env vars
++  # onto the core container. The IAM code reads these two variables.
++  extraEnv:
++    - name: POSTGRESQL_USE_IAM_AUTH
++      value: "true"
++    - name: POSTGRESQL_AWS_REGION
++      value: "<YOUR_AWS_REGION>"
 +
 +jobservice:
 +  replicas: 1
 +  image:
-+    repository: 8gears.container-registry.com/8gcr/harbor-jobservice
-+    tag: v2.15.0
++    repository: <YOUR_IMAGE_REGISTRY>/harbor-jobservice
++    tag: <YOUR_IMAGE_TAG>
 +  serviceAccount:
 +    create: false
 +    name: "harbor-sa"
-+  securityContext:
-+    readOnlyRootFilesystem: false
-+  config:
-+    POSTGRESQL_USE_IAM_AUTH: "true"
-+    POSTGRESQL_AWS_REGION: "<YOUR_AWS_REGION>"
++  extraEnv:
++    - name: POSTGRESQL_USE_IAM_AUTH
++      value: "true"
++    - name: POSTGRESQL_AWS_REGION
++      value: "<YOUR_AWS_REGION>"
 +
 +registry:
 +  replicas: 1
 +  image:
-+    repository: 8gears.container-registry.com/8gcr/harbor-registry
-+    tag: v2.15.0
++    repository: <YOUR_IMAGE_REGISTRY>/harbor-registry
++    tag: <YOUR_IMAGE_TAG>
 +  serviceAccount:
 +    create: false
 +    name: "harbor-sa"
 +  relativeurls: true
-+  persistence:
-+    enabled: false
-+  securityContext:
-+    readOnlyRootFilesystem: false
-+  env:
-+    - name: REGISTRY_STORAGE_CACHE_LAYERINFO
-+      value: "inmemory"
-+    - name: AWS_REGION
-+      value: "<YOUR_AWS_REGION>"
++  # S3 storage via IRSA. Do NOT set accesskey / secretkey: leaving them unset
++  # makes the AWS SDK fall back to the web-identity token provider.
 +  storage:
 +    type: s3
 +    s3:
@@ -309,19 +384,19 @@ index 000000000..8c00f01a1
 +      bucket: "<YOUR_BUCKET_NAME>"
 +      secure: true
 +      v4auth: true
-+      accesskey: ""
-+      secretkey: ""
 +
 +portal:
-+  service:
-+    type: ClusterIP
++  image:
++    repository: <YOUR_IMAGE_REGISTRY>/harbor-portal
++    tag: <YOUR_IMAGE_TAG>
 +
 +valkey:
 +  enabled: true
 +
++# Scanner and exporter are off in this profile to keep the IAM test minimal.
++# Re-enable them in production deployments.
 +trivy:
-+  enabled: true
-+
++  enabled: false
 +exporter:
 +  enabled: false
 diff --git a/src/cmd/exporter/main.go b/src/cmd/exporter/main.go
