@@ -62,3 +62,57 @@ BEGIN
             FOREIGN KEY (role) REFERENCES role (role_id) ON DELETE RESTRICT;
     END IF;
 END $$;
+
+/*
+Every core replica holds the role policy in memory and reads the database when
+that policy changes, not when a user asks a permission question. Harbor runs
+several cores against one database, so a replica that misses a change and never
+finds out would keep authorizing against a policy that no longer exists.
+
+Two things guard against that, and both are driven from here.
+
+The trigger sends NOTIFY from inside the writing transaction, so it cannot
+survive a rollback and it fires for writes that never went through Harbor, such
+as a migration or a support script. Its payload carries no rules, only the new
+version and the replica that caused it, so a replica goes back to the table
+rather than applying something it was handed, and skips its own writes.
+
+The same statement bumps policy_version. A replica records the version it last
+loaded and compares it against this counter, so a notification that never
+arrives, a dropped connection or a failed reload all converge anyway.
+*/
+CREATE TABLE IF NOT EXISTS policy_version (
+  only_row    boolean   PRIMARY KEY DEFAULT TRUE,
+  version     bigint    NOT NULL DEFAULT 1,
+  update_time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT policy_version_single_row CHECK (only_row)
+);
+INSERT INTO policy_version (only_row) VALUES (TRUE) ON CONFLICT DO NOTHING;
+
+CREATE OR REPLACE FUNCTION harbor_policy_notify() RETURNS trigger AS $$
+DECLARE
+  v bigint;
+BEGIN
+  UPDATE policy_version
+     SET version = version + 1, update_time = CURRENT_TIMESTAMP
+   WHERE only_row
+  RETURNING version INTO v;
+
+  PERFORM pg_notify(
+    'harbor_policy',
+    v::text || ':' || coalesce(current_setting('harbor.origin', TRUE), '?'));
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- AFTER STATEMENT, not AFTER ROW: replacing a role's permissions is one delete
+-- and one insert, and the fleet does not need to rebuild once per row.
+DROP TRIGGER IF EXISTS role_permission_notify ON role_permission;
+CREATE TRIGGER role_permission_notify
+  AFTER INSERT OR UPDATE OR DELETE ON role_permission
+  FOR EACH STATEMENT EXECUTE FUNCTION harbor_policy_notify();
+
+DROP TRIGGER IF EXISTS permission_policy_notify ON permission_policy;
+CREATE TRIGGER permission_policy_notify
+  AFTER INSERT OR UPDATE OR DELETE ON permission_policy
+  FOR EACH STATEMENT EXECUTE FUNCTION harbor_policy_notify();
