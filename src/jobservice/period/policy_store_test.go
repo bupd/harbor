@@ -118,4 +118,7 @@ func (suite *PolicyStoreTestSuite) TestInvalidPolicy() {
 	suite.Error(p.Validate(), "error should be returned for invalid cron spec")
 	p.CronSpec = "0 10 10 * * *"
 	suite.NoError(p.Validate(), "validation passed")
+	p.CronSpec = "0 0 3 30 2 *"
+	suite.NoError(p.Validate(), "stored unreachable cron spec should stay valid")
+	suite.Error(p.ValidateForRegistration(), "new unreachable cron spec should be rejected")
 }

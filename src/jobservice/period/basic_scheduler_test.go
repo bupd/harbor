@@ -147,6 +147,42 @@ func (suite *BasicSchedulerTestSuite) TestUnSchedule() {
 	require.NoError(suite.T(), err, "unschedule: nil error expected but got %s", err)
 }
 
+// TestUnScheduleStoredUnreachablePolicy tests un-scheduling a stored unreachable policy without job stats
+func (suite *BasicSchedulerTestSuite) TestUnScheduleStoredUnreachablePolicy() {
+	p := &Policy{
+		ID:       "stored_unreachable_without_stats",
+		JobName:  job.SampleJob,
+		CronSpec: "0 0 3 30 2 *",
+	}
+	_, err := suite.scheduler.Schedule(p)
+	require.Error(suite.T(), err, "new unreachable policy should be rejected")
+
+	raw, err := p.Serialize()
+	require.NoError(suite.T(), err)
+	conn := suite.pool.Get()
+	defer func() {
+		_ = conn.Close()
+	}()
+	_, err = conn.Do("ZADD", rds.KeyPeriodicPolicy(suite.namespace), 1200, raw)
+	require.NoError(suite.T(), err, "zadd: nil error expected but got %s", err)
+	require.Contains(suite.T(), suite.loadPolicyIDs(conn), p.ID, "stored policy should be loadable")
+
+	err = suite.scheduler.UnSchedule(p.ID)
+	require.NoError(suite.T(), err, "unschedule: nil error expected but got %s", err)
+	assert.NotContains(suite.T(), suite.loadPolicyIDs(conn), p.ID, "stored policy should be removed")
+}
+
+// loadPolicyIDs returns the IDs of the stored periodic policies.
+func (suite *BasicSchedulerTestSuite) loadPolicyIDs(conn redis.Conn) []string {
+	pl, err := Load(suite.namespace, conn)
+	require.NoError(suite.T(), err, "load: nil error expected but got %s", err)
+	ids := make([]string, 0, len(pl))
+	for _, p := range pl {
+		ids = append(ids, p.ID)
+	}
+	return ids
+}
+
 // TestClearDirtyJobsNegativeEpoch verifies that clearDirtyJobs removes entries
 // with negative epoch scores (e.g. jobs enqueued for time.Time{}).
 func (suite *BasicSchedulerTestSuite) TestClearDirtyJobsNegativeEpoch() {
