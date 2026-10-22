@@ -16,6 +16,7 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -371,38 +372,44 @@ func ValidateNetworkTarget(ctx context.Context, resolver NetworkResolver, host s
 }
 
 func validateNetworkTarget(ctx context.Context, resolver NetworkResolver, policy egressPolicy, host string) error {
+	_, err := resolveNetworkTarget(ctx, resolver, policy, host)
+	return err
+}
+
+// resolveNetworkTarget validates host and returns its first address; zero for an allowlisted name.
+func resolveNetworkTarget(ctx context.Context, resolver NetworkResolver, policy egressPolicy, host string) (netip.Addr, error) {
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	if host == "" {
-		return fmt.Errorf("target must include a hostname")
+		return netip.Addr{}, fmt.Errorf("target must include a hostname")
 	}
 	if policy.allowsHost(host) {
-		return nil
+		return netip.Addr{}, nil
 	}
 	if isBlockedTargetHostname(host) {
-		return fmt.Errorf("target hostname %q is restricted", host)
+		return netip.Addr{}, fmt.Errorf("target hostname %q is restricted", host)
 	}
 
 	address, err := netip.ParseAddr(host)
 	if err == nil {
 		if err := policy.checkAddress(address); err != nil {
-			return fmt.Errorf("target address %q is blocked: %w", host, err)
+			return netip.Addr{}, fmt.Errorf("target address %q is blocked: %w", host, err)
 		}
-		return nil
+		return address.Unmap(), nil
 	}
 
 	if resolver == nil {
-		return fmt.Errorf("target hostname %q cannot be resolved", host)
+		return netip.Addr{}, fmt.Errorf("target hostname %q cannot be resolved", host)
 	}
 	addresses, err := resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil || len(addresses) == 0 {
-		return fmt.Errorf("target hostname %q cannot be resolved", host)
+		return netip.Addr{}, fmt.Errorf("target hostname %q cannot be resolved", host)
 	}
 	for _, address := range addresses {
 		if err := policy.checkAddress(address); err != nil {
-			return fmt.Errorf("target hostname %q resolves to a blocked address: %w", host, err)
+			return netip.Addr{}, fmt.Errorf("target hostname %q resolves to a blocked address: %w", host, err)
 		}
 	}
-	return nil
+	return addresses[0].Unmap(), nil
 }
 
 func isBlockedTargetHostname(host string) bool {
@@ -437,6 +444,103 @@ func withEgressGuard(resolver NetworkResolver) func(*http.Transport) {
 			transport.Proxy = guard.proxy
 		}
 		transport.DialContext = guard.dialContext
+	}
+}
+
+// NewEgressTransport is WithEgressGuard plus pinning proxied requests to the validated IP, so the proxy cannot re-resolve the name.
+func NewEgressTransport(opts ...func(*http.Transport)) http.RoundTripper {
+	return newEgressTransport(net.DefaultResolver, opts...)
+}
+
+func newEgressTransport(resolver NetworkResolver, opts ...func(*http.Transport)) http.RoundTripper {
+	transport := newDefaultTransport()
+	for _, opt := range opts {
+		opt(transport)
+	}
+	upstreamProxy := transport.Proxy
+	withEgressGuard(resolver)(transport)
+	return &pinnedProxyTransport{base: transport, upstreamProxy: upstreamProxy, resolver: resolver}
+}
+
+type pinnedProxyTransport struct {
+	base          *http.Transport
+	upstreamProxy func(*http.Request) (*url.URL, error)
+	resolver      NetworkResolver
+	// tlsTransports caches a base clone per HTTPS hostname with ServerName set to that hostname.
+	tlsTransports sync.Map
+}
+
+func (pinned *pinnedProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	policy := currentEgressPolicy()
+	if pinned.upstreamProxy == nil || policy.level == egressAllowAll {
+		return pinned.base.RoundTrip(req)
+	}
+	proxyURL, err := pinned.upstreamProxy(req)
+	if err != nil {
+		closeRequestBody(req)
+		return nil, err
+	}
+	hostname := strings.TrimSuffix(strings.ToLower(req.URL.Hostname()), ".")
+	if _, err := netip.ParseAddr(hostname); proxyURL == nil || err == nil || policy.allowsHost(hostname) {
+		// direct dials are guarded, literal IPs cannot rebind, allowlisted names are trusted
+		return pinned.base.RoundTrip(req)
+	}
+
+	address, err := resolveNetworkTarget(req.Context(), pinned.resolver, policy, hostname)
+	if err != nil {
+		policy.logBlocked(hostname, err)
+		closeRequestBody(req)
+		return nil, err
+	}
+	pinnedReq := req.Clone(req.Context())
+	switch port := req.URL.Port(); {
+	case port != "":
+		pinnedReq.URL.Host = net.JoinHostPort(address.String(), port)
+	case address.Is6():
+		pinnedReq.URL.Host = "[" + address.String() + "]"
+	default:
+		pinnedReq.URL.Host = address.String()
+	}
+	transport := pinned.base
+	if strings.EqualFold(req.URL.Scheme, "https") {
+		// the tunnel goes to the IP; the request inside it keeps the original Host
+		if pinnedReq.Host == "" {
+			pinnedReq.Host = req.URL.Host
+		}
+		transport = pinned.tlsTransport(req.URL.Hostname())
+	} else {
+		// the proxy reads the target from the absolute URI, so Host must be the IP too
+		pinnedReq.Host = pinnedReq.URL.Host
+	}
+	resp, err := transport.RoundTrip(pinnedReq)
+	if resp != nil {
+		resp.Request = req
+	}
+	return resp, err
+}
+
+// Base returns the guarded transport underneath the pinning, for inspection.
+func (pinned *pinnedProxyTransport) Base() *http.Transport {
+	return pinned.base
+}
+
+func (pinned *pinnedProxyTransport) tlsTransport(hostname string) *http.Transport {
+	if transport, ok := pinned.tlsTransports.Load(hostname); ok {
+		return transport.(*http.Transport)
+	}
+	transport := pinned.base.Clone()
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	transport.TLSClientConfig.ServerName = hostname
+	actual, _ := pinned.tlsTransports.LoadOrStore(hostname, transport)
+	return actual.(*http.Transport)
+}
+
+// closeRequestBody honours the RoundTripper contract of closing the body on error.
+func closeRequestBody(req *http.Request) {
+	if req.Body != nil {
+		_ = req.Body.Close()
 	}
 }
 
