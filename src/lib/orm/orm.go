@@ -84,6 +84,13 @@ func NewContext(ctx context.Context, o orm.QueryExecutor) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// A non-transactional ormer opens its own session, so after-commit hooks
+	// inherited from a parent transaction (Clone, Copy) must not apply to it.
+	if _, isTx := o.(orm.TxOrmer); !isTx {
+		if callbacks, _ := ctx.Value(afterCommitKey{}).(*afterCommitCallbacks); callbacks != nil {
+			ctx = context.WithValue(ctx, afterCommitKey{}, (*afterCommitCallbacks)(nil))
+		}
+	}
 	return context.WithValue(ctx, ormKey{}, o)
 }
 
@@ -131,9 +138,9 @@ func WithTransaction(f func(ctx context.Context) error) func(ctx context.Context
 		// Collect after-commit hooks for transactions that are not started by
 		// middleware. Middleware may install its own collector so that hooks run
 		// after its outer transaction has committed.
-		_, hasCallbacks := ctx.Value(afterCommitKey{}).(*afterCommitCallbacks)
+		callbacks, _ := ctx.Value(afterCommitKey{}).(*afterCommitCallbacks)
 		var runAfterCommit func() error
-		if !hasCallbacks {
+		if callbacks == nil {
 			ctx, runAfterCommit = WithAfterCommit(ctx)
 		}
 

@@ -412,6 +412,37 @@ func (suite *OrmSuite) TestReadOrCreateParallel() {
 	suite.Equal(1, sum)
 }
 
+func (suite *OrmSuite) TestAfterCommitDetachedFromDerivedContext() {
+	derives := map[string]func(context.Context) context.Context{"clone": Clone, "copy": Copy}
+	for name, derive := range derives {
+		suite.Run(name, func() {
+			ctx := NewContext(context.TODO(), orm.NewOrm())
+
+			var innerRan, inlineRan, outerRan bool
+			err := WithTransaction(func(txCtx context.Context) error {
+				suite.NoError(AfterCommit(txCtx, func() error { outerRan = true; return nil }))
+
+				// a derived context runs on its own session, so its transaction
+				// fires hooks on its own commit
+				err := WithTransaction(func(innerCtx context.Context) error {
+					return AfterCommit(innerCtx, func() error { innerRan = true; return nil })
+				})(derive(txCtx))
+				suite.NoError(err)
+				suite.True(innerRan, "hook of an independent transaction must run on its own commit")
+
+				// outside any transaction of its own, the hook runs inline
+				suite.NoError(AfterCommit(derive(txCtx), func() error { inlineRan = true; return nil }))
+				suite.True(inlineRan, "hook on a derived context outside a transaction must run inline")
+
+				suite.False(outerRan)
+				return nil
+			})(ctx)
+			suite.NoError(err)
+			suite.True(outerRan)
+		})
+	}
+}
+
 func (suite *OrmSuite) TestPaginationOnRawSQL() {
 	query := &q.Query{
 		PageNumber: 1,
