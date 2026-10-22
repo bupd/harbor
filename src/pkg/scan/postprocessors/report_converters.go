@@ -62,11 +62,12 @@ func (c *nativeToRelationalSchemaConverter) ToRelationalSchema(ctx context.Conte
 	}
 	// parse the raw report with the V1 schema of the report to the normalized structures
 	rawReport := new(vuln.Report)
-	if err := json.Unmarshal([]byte(reportData), &rawReport); err != nil {
+	if err := json.Unmarshal([]byte(reportData), rawReport); err != nil {
 		return "", "", errors.Wrap(err, "Error when toSchema V1 report to V2")
 	}
 
-	if err := c.toSchema(ctx, reportUUID, registrationUUID, digest, reportData); err != nil {
+	// reuse the parsed report so a second full copy is never held in memory
+	if err := c.toSchema(ctx, reportUUID, registrationUUID, digest, rawReport); err != nil {
 		return "", "", errors.Wrap(err, "Error when converting vulnerability report")
 	}
 
@@ -97,13 +98,7 @@ func (c *nativeToRelationalSchemaConverter) FromRelationalSchema(ctx context.Con
 	return rp, nil
 }
 
-func (c *nativeToRelationalSchemaConverter) toSchema(ctx context.Context, reportUUID string, registrationUUID string, _ string, rawReportData string) error {
-	var vulnReport vuln.Report
-	err := json.Unmarshal([]byte(rawReportData), &vulnReport)
-	if err != nil {
-		return err
-	}
-
+func (c *nativeToRelationalSchemaConverter) toSchema(ctx context.Context, reportUUID string, registrationUUID string, _ string, vulnReport *vuln.Report) error {
 	var cveIDs []any
 	for _, v := range vulnReport.Vulnerabilities {
 		v.Severity = vuln.ParseSeverityVersion3(v.Severity.String())
@@ -115,7 +110,9 @@ func (c *nativeToRelationalSchemaConverter) toSchema(ctx context.Context, report
 		return err
 	}
 
-	l := vulnReport.GetVulnerabilityItemList()
+	// local list: GetVulnerabilityItemList caches on the report and would keep every item alive
+	l := &vuln.VulnerabilityItemList{}
+	l.Add(vulnReport.Vulnerabilities...)
 	s := lib.Set{}
 
 	var (
