@@ -45,7 +45,8 @@ var safeMethods = []string{http.MethodGet, http.MethodHead, http.MethodOptions}
 // previous token scheme did, which rejected any write that failed to present a
 // token.
 func check(req *http.Request) error {
-	// Origin must match Host port included, so the proxy has to forward the port.
+	// Without Sec-Fetch-Site, Origin must equal Host port included, so a proxy
+	// in front of core has to forward the Host the client addressed.
 	if err := protect.Check(req); err != nil {
 		return err
 	}
@@ -64,6 +65,15 @@ func check(req *http.Request) error {
 // Middleware rejects cross-origin requests that carry a session. It reads the
 // Fetch metadata headers browsers have sent since 2023, falling back to
 // comparing Origin against the Host the client addressed.
+//
+// Browsers send Sec-Fetch-Site only to secure origins, so the fallback is the
+// main path for plain HTTP from a non-localhost host, besides older browsers.
+// It compares host and port but not scheme, and it does not consult
+// X-Forwarded-Host. A reverse proxy in front of core must therefore forward the
+// Host header unchanged, port included: proxy_set_header Host $http_host in
+// nginx, ProxyPreserveHost On in Apache. Clients without a session, such as
+// docker or robot accounts on basic auth, are excused by csrfSkipper and are
+// not affected.
 //
 // Deliberately no configured endpoint takes part in the decision. Harbor is
 // commonly reachable on several ingresses, over different schemes, behind

@@ -217,6 +217,28 @@ func TestMiddlewareSessionCarryingWrite(t *testing.T) {
 	assert.False(t, called, "same-host, different-port session-carrying write must be refused")
 }
 
+// TestMiddlewareFallbackNeedsHostPort pins the fallback over HTTPS on a
+// non-default port, for a browser that sends no Sec-Fetch-Site. The check then
+// compares Origin against Host port included, and the scheme plays no part, so
+// a proxy that forwards $host drops the port and turns a same-origin login or
+// session-carrying write into a 403. The plain-HTTP equivalents are covered in
+// TestMiddlewareAllows and TestMiddlewareRejects.
+func TestMiddlewareFallbackNeedsHostPort(t *testing.T) {
+	origin := map[string]string{"Origin": "https://" + host + ":8443"}
+
+	for _, path := range []string{"/c/login", "/api/v2.0/projects"} {
+		t.Run(path, func(t *testing.T) {
+			code, called := serve(t, http.MethodPost, host+":8443", path, origin, true)
+			assert.Equal(t, http.StatusOK, code, "Host keeps the port")
+			assert.True(t, called, "same-origin write should reach the handler")
+
+			code, called = serve(t, http.MethodPost, host, path, origin, true)
+			assert.Equal(t, http.StatusForbidden, code, "Host lost the port")
+			assert.False(t, called, "write must be refused when Host lost the port")
+		})
+	}
+}
+
 // TestCsrfSkipper pins which routes the check applies to. Anything not carrying
 // a session on these prefixes is a registry or API client rather than a browser.
 func TestCsrfSkipper(t *testing.T) {
